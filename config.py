@@ -12,6 +12,7 @@ all_unique_default_config_params = {
 
 
     # Model / Data
+    'network_type': 'resnet50',
     'frames_per_datapoint': 3,
     'use_transitions': True,
     'use_color': False,

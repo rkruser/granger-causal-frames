@@ -10,12 +10,32 @@ from video_loader import BeamNG_FileTracker, VideoDataset, label_func_1, frame_t
 from config import get_config, trainvids, testvids
 
 
+'''
+Todo Wednesday June 10th
+- Change model init to have more flexibility with neural network (e.g., can use resnet 50 or resnet 100 if chosen)
+- Add regular probability prediction
+- Put on github and move to lab computer and vulcan
+- Create a way of running batch jobs
+- Run many hyperparam searches
+- Meanwhile, create pipeline to visualize all the summary data
+- Look into quickly plugging in other datasets (Need to put your videoloader interface over them)
+'''
+
+
 # Later make this more flexible
 class Model:
     def __init__(self, cfg):
         self.cfg = cfg
 
-        self.network = resnet50_flexible(num_classes=1, data_channels=cfg.frames_per_datapoint)
+        if cfg.network_type == 'resnet50':
+            self.network = resnet50_flexible(num_classes=1, data_channels=cfg.frames_per_datapoint)
+        elif cfg.network_type == 'resnet101':
+            self.network = resnet50_flexible(num_classes=1, data_channels=cfg.frames_per_datapoint)
+        elif cfg.network_type == 'resnet18':
+            self.network = resnet50_flexible(num_classes=1, data_channels=cfg.frames_per_datapoint)
+        else:
+            raise ValueError("Unknown network_type option")
+
         self.device = cfg.device
         self.network = self.network.to(self.device)
 
@@ -43,13 +63,13 @@ class Model:
 
         weights = torch.ones(len(x_current)).to(self.device)
         with torch.no_grad():
-            q_future = self.cfg.rl_gamma * self.network(x_future).squeeze()
+            q_future = self.cfg.rl_gamma * self.network(x_future).squeeze(1)
             inds = torch.abs(y_future+2)<0.0001
             q_future[inds] = 0
             weights[inds] = self.cfg.terminal_weight
             q_future = q_future+y_current
 
-        q_current = self.network(x_current).squeeze()
+        q_current = self.network(x_current).squeeze(1)
 
         loss = self.q_loss(q_current, q_future, weights)
 
@@ -58,8 +78,16 @@ class Model:
         self.optimizer.step()
         return q_current, loss.item()
        
+    def prob_loss(self, predictions, actual):
+        return torch.nn.functional.binary_cross_entropy_with_logits(predictions, actual)
+
     def prob_update(self, x, y):
-        pass 
+        predictions = self.network(x).squeeze(1)
+        loss = self.prob_loss(predictions, y)
+        self.network.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        return predictions, loss.item()
 
     def update(self, x, y):
         x, y = x.to(self.device), y.to(self.device)
