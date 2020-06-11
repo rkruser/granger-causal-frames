@@ -88,9 +88,9 @@ def get_config(stringargs=None): #Maybe add optional argument so can change conf
     if stringargs is None:
         args = sys.argv[1:]
     else:
-        args = stringargs.split()
+        args = stringargs.split() + sys.argv[1:] # Allow both command line and string args
 
-    cfg = parser.parse_args(args)
+    cfg, _ = parser.parse_known_args(args)
     return cfg, args
 
 

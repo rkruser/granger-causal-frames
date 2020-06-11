@@ -339,8 +339,12 @@ def random_seed(seed):
 
 
 
-def run_job_from_string(cfg_str = '', trainvideos=trainvids, testvideos=testvids):
+def run_job_from_string(cfg_str = '', trainvideos=trainvids, testvideos=testvids, jobid=None):
     cfg, args = get_config(cfg_str)
+    if jobid is not None:
+        cfg.model_name += '_'+str(jobid)
+    if cfg.use_q_loss:
+        cfg.use_transitions=True
     print(args)
     print(cfg)
     random_seed(cfg.random_seed)
@@ -358,7 +362,20 @@ def test_pipeline():
 
 
 
+def run_from_file():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--line', type=int, required=True)
+    parser.add_argument('--experiment_file', type=str, default='experiment_args.txt')
+    opt, _ = parser.parse_known_args()
+    with open(opt.experiment_file,'r') as f:
+        lines = f.readlines()
+#    run_job_from_string(cfg_str=lines[opt.line], trainvideos=trainvids, testvideos=testvids, jobid=opt.line)
+    run_job_from_string(cfg_str=lines[opt.line], trainvideos=['v1_1.mp4', 'v1_2.mp4'], testvideos=['v1_3.mp4', 'v1_4.mp4'], jobid=opt.line)
+
+
 if __name__ == '__main__':
-    test_pipeline()
+#    test_pipeline()
+    run_from_file()
 
 
