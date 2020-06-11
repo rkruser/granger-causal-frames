@@ -1,0 +1,2 @@
+--batch_size 32 --n_epochs 5 --checkpoint_every 2 --model_name test --network_type resnet101 --overwrite_last 1 --use_q_loss 0 --use_transitions 0
+--batch_size 32 --n_epochs 5 --checkpoint_every 2 --model_name test --network_type resnet50 --overwrite_last 1 --use_q_loss 1 --use_transitions 1
