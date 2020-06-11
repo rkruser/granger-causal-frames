@@ -5,7 +5,7 @@ import numpy as np
 
 from utils import AverageMeter, MeterBox, MetricBox, FolderTracker, VideoPredictions
 from utils import best_step_fit
-from flexible_resnet import resnet50_flexible
+from flexible_resnet import resnet50_flexible, resnet101_flexible, resnet18_flexible
 from video_loader import BeamNG_FileTracker, VideoDataset, label_func_1, frame_transform_1
 from config import get_config, trainvids, testvids
 
@@ -131,7 +131,7 @@ class Model:
                 q_future = q_future
                 loss = self.q_loss(predictions, q_future, weights).item()
             else:
-                pass
+                loss = -10
 
         return predictions, loss
 
@@ -159,9 +159,9 @@ class Model:
 
     # Change this later to a better save function?
     def save(self, path):
-        with open(os.path.join(path,'model.pkl'), 'wb') as f:
+        with open(os.path.join(path,'model.th'), 'wb') as f:
             #pickle.dump(self, f)
-            torch.save(self, f)
+            torch.save({'model_state_dict':self.network.state_dict(), 'optimizer_state_dict':self.optimizer.state_dict(), 'config':self.cfg}, f)
 
 
 def compute_summary(video_stats):
@@ -228,7 +228,10 @@ def train_and_test(model, train_dataset, test_dataset, cfg, args):
             print("Checkpointing")
             model.eval()
             path = folders.subfolder('checkpoint',epoch)
-            model.save(path)
+            if cfg.overwrite_last:
+                model.save(folders.folder())
+            else:
+                model.save(path)
             
             vp = VideoPredictions()
             
@@ -243,6 +246,8 @@ def train_and_test(model, train_dataset, test_dataset, cfg, args):
                     continue
                 numerical_predictions, loss = model.predict_video(torch.from_numpy(video.array).float()/255.0, 
                                                                     y_vals=torch.Tensor(video.labels))
+                if not cfg.use_q_loss:
+                    numerical_predictions = torch.sigmoid(numerical_predictions)
                 predicted_crash, predicted_time = model.filter_predictions(numerical_predictions.numpy(),
                                                            video.playback_info['num_sampled_frames'],
                                                            video.playback_info['adjusted_frame_duration'],
@@ -270,6 +275,9 @@ def train_and_test(model, train_dataset, test_dataset, cfg, args):
                     continue
                 numerical_predictions, loss = model.predict_video(torch.from_numpy(video.array).float()/255.0, 
                                                                   y_vals=torch.Tensor(video.labels))
+                if not cfg.use_q_loss:
+                    numerical_predictions = torch.sigmoid(numerical_predictions)
+
                 predicted_crash, predicted_time = model.filter_predictions(numerical_predictions.numpy(),
                                                            video.playback_info['num_sampled_frames'],
                                                            video.playback_info['adjusted_frame_duration'],
@@ -305,6 +313,7 @@ def train_and_test(model, train_dataset, test_dataset, cfg, args):
 def construct_dataset_from_config(cfg, vidlist):
     trunc_list = np.zeros(len(vidlist)).astype('bool')
     trunc_list[np.arange(len(vidlist))%2 == 0] = True
+    label_postprocess = True if cfg.use_q_loss else False
     ftracker = BeamNG_FileTracker(cfg.data_directory, basename_list=vidlist, crash_truncate_list=trunc_list)
     dataset = VideoDataset(vidfiles=ftracker.file_list(),
                            videoinfo=ftracker.file_info(),
@@ -314,6 +323,7 @@ def construct_dataset_from_config(cfg, vidlist):
                            frames_per_datapoint=cfg.frames_per_datapoint,
                            overlap_datapoints=cfg.overlap_datapoints,
                            sample_every=cfg.frame_sample_freq,
+                           label_postprocess=label_postprocess,
                            verbose=False,
                            is_color=False)
     return dataset
@@ -331,6 +341,8 @@ def random_seed(seed):
 
 def run_job_from_string(cfg_str = '', trainvideos=trainvids, testvideos=testvids):
     cfg, args = get_config(cfg_str)
+    print(args)
+    print(cfg)
     random_seed(cfg.random_seed)
     train_set = construct_dataset_from_config(cfg, trainvideos)
     test_set = construct_dataset_from_config(cfg, testvideos)
@@ -340,7 +352,7 @@ def run_job_from_string(cfg_str = '', trainvideos=trainvids, testvideos=testvids
 
 
 def test_pipeline():
-    run_job_from_string(cfg_str='--batch_size 64 --n_epochs 5 --checkpoint_every 2 --model_name test',
+    run_job_from_string(cfg_str='--batch_size 32 --n_epochs 5 --checkpoint_every 2 --model_name test --network_type resnet101 --overwrite_last 1 --use_q_loss 0 --use_transitions 0',
                         trainvideos=['v1_1.mp4', 'v1_2.mp4'],
                         testvideos=['v1_3.mp4', 'v1_4.mp4'])
 

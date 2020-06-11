@@ -55,7 +55,8 @@ all_unique_default_config_params = {
     'model_checkpoint_number': -1,
     'data_directory': datadir,
     'device':'cuda:0',
-    'random_seed': 53
+    'random_seed': 53,
+    'overwrite_last': False
 }
 
 # Items can repeat here
@@ -74,7 +75,10 @@ all_unique_default_config_params = {
 def construct_parser(cfg_dict):
     parser = argparse.ArgumentParser()
     for param, val in cfg_dict.items():
-        parser.add_argument('--'+param, type=type(val), default=val)
+        valtype = type(val)
+        if valtype is bool:
+            valtype = int
+        parser.add_argument('--'+param, type=valtype, default=val)
 
     return parser
 
