@@ -370,8 +370,8 @@ def run_from_file():
     opt, _ = parser.parse_known_args()
     with open(opt.experiment_file,'r') as f:
         lines = f.readlines()
-#    run_job_from_string(cfg_str=lines[opt.line], trainvideos=trainvids, testvideos=testvids, jobid=opt.line)
-    run_job_from_string(cfg_str=lines[opt.line], trainvideos=['v1_1.mp4', 'v1_2.mp4'], testvideos=['v1_3.mp4', 'v1_4.mp4'], jobid=opt.line)
+    run_job_from_string(cfg_str=lines[opt.line], trainvideos=trainvids, testvideos=testvids, jobid=opt.line)
+#    run_job_from_string(cfg_str=lines[opt.line], trainvideos=['v1_1.mp4', 'v1_2.mp4'], testvideos=['v1_3.mp4', 'v1_4.mp4'], jobid=opt.line)
 
 
 if __name__ == '__main__':
