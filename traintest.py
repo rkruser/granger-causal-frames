@@ -15,6 +15,7 @@ Todo Wednesday June 10th
 - Change model init to have more flexibility with neural network (e.g., can use resnet 50 or resnet 100 if chosen)
 - Add regular probability prediction
 - Put on github and move to lab computer and vulcan
+- improve model saving pipeline
 - Create a way of running batch jobs
 - Run many hyperparam searches
 - Meanwhile, create pipeline to visualize all the summary data
@@ -27,12 +28,17 @@ class Model:
     def __init__(self, cfg):
         self.cfg = cfg
 
+        if cfg.use_color:
+            ncolors = 3
+        else:
+            ncolors = 1
+
         if cfg.network_type == 'resnet50':
-            self.network = resnet50_flexible(num_classes=1, data_channels=cfg.frames_per_datapoint)
+            self.network = resnet50_flexible(num_classes=1, data_channels=cfg.frames_per_datapoint*ncolors)
         elif cfg.network_type == 'resnet101':
-            self.network = resnet50_flexible(num_classes=1, data_channels=cfg.frames_per_datapoint)
+            self.network = resnet101_flexible(num_classes=1, data_channels=cfg.frames_per_datapoint*ncolors)
         elif cfg.network_type == 'resnet18':
-            self.network = resnet50_flexible(num_classes=1, data_channels=cfg.frames_per_datapoint)
+            self.network = resnet18_flexible(num_classes=1, data_channels=cfg.frames_per_datapoint*ncolors)
         else:
             raise ValueError("Unknown network_type option")
 
@@ -154,7 +160,8 @@ class Model:
     # Change this later to a better save function?
     def save(self, path):
         with open(os.path.join(path,'model.pkl'), 'wb') as f:
-            pickle.dump(self, f)
+            #pickle.dump(self, f)
+            torch.save(self, f)
 
 
 def compute_summary(video_stats):
@@ -175,7 +182,7 @@ def compute_summary(video_stats):
 
 # Model includes network, optimizer, loss function? Or should loss function be separate?
 # Needs to be able to save and load easily
-def train_and_test(model, train_dataset, test_dataset, cfg):
+def train_and_test(model, train_dataset, test_dataset, cfg, args):
     model.train()
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=cfg.batch_size,
                              shuffle=cfg.shuffle_train_data, num_workers=cfg.num_data_workers)
@@ -194,6 +201,8 @@ def train_and_test(model, train_dataset, test_dataset, cfg):
     meters = MeterBox(train_batch_loss=AverageMeter())
     metrics = MetricBox(*tracker_names) 
     folders = FolderTracker(root=cfg.model_directory, name=cfg.model_name)
+    with open(os.path.join(folders.folder(),'config_info.pkl'),'wb') as f:
+        pickle.dump((cfg, args), f) # Save config for parsing
 
     for epoch in range(cfg.n_epochs):
         print("Epoch", epoch)
@@ -321,12 +330,12 @@ def random_seed(seed):
 
 
 def run_job_from_string(cfg_str = '', trainvideos=trainvids, testvideos=testvids):
-    cfg = get_config(cfg_str)
+    cfg, args = get_config(cfg_str)
     random_seed(cfg.random_seed)
     train_set = construct_dataset_from_config(cfg, trainvideos)
     test_set = construct_dataset_from_config(cfg, testvideos)
     model = construct_model_from_config(cfg)
-    train_and_test(model, train_set, test_set, cfg)    
+    train_and_test(model, train_set, test_set, cfg, args)
 
 
 

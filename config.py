@@ -1,5 +1,20 @@
 # All config parameters go here with their default values
 import argparse
+import sys
+
+import socket
+hostname = socket.gethostname()
+if 'LV426' in hostname:
+    datadir = '/mnt/linuxshared/phd-research/data/beamng_vids/all_vids'
+    modeldir = './models'
+elif 'vulcan' in hostname:
+    datadir = '/vulcan/scratch/krusinga/BeamNG/all_vids'
+    modeldir = '/vulcan/scratch/krusinga/BeamNG/models'
+else:
+    print("Unknown hostname")
+    datadir = './all_vids'
+    modeldir = './models'
+    print("Default to", datadir, modeldir)
 
 all_unique_default_config_params = {
     # Training
@@ -36,14 +51,12 @@ all_unique_default_config_params = {
 
     # General
     'model_name': 'model',
-    'model_directory': './models',
+    'model_directory': modeldir,
     'model_checkpoint_number': -1,
-    'data_directory': '/mnt/linuxshared/phd-research/data/beamng_vids/all_vids',
+    'data_directory': datadir,
     'device':'cuda:0',
     'random_seed': 53
 }
-
-
 
 # Items can repeat here
 #partitions = {
@@ -69,11 +82,12 @@ def construct_parser(cfg_dict):
 def get_config(stringargs=None): #Maybe add optional argument so can change configs from command line
     parser = construct_parser(all_unique_default_config_params)
     if stringargs is None:
-        cfg = parser.parse_args()
+        args = sys.argv[1:]
     else:
         args = stringargs.split()
-        cfg = parser.parse_args(args)
-    return cfg
+
+    cfg = parser.parse_args(args)
+    return cfg, args
 
 
 

@@ -209,8 +209,21 @@ class ResNet(nn.Module):
 #     """
 #     return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress,
 # **kwargs)
-def resnet18_flexible(**kwargs):
+def old_resnet18_flexible(**kwargs):
     return ResNet(BasicBlock, [2,2,2,2], **kwargs)
 
-def resnet50_flexible(**kwargs):
+def old_resnet50_flexible(**kwargs):
     return ResNet(BasicBlock, [3,4,6,3], **kwargs)
+
+def old_resnet101_flexible(**kwargs):
+    return ResNet(BasicBlock, [3,4,23,3], **kwargs)
+
+
+def resnet18_flexible(**kwargs):
+    return ResNet(Bottleneck, [2,2,2,2], **kwargs)
+
+def resnet50_flexible(**kwargs):
+    return ResNet(Bottleneck, [3,4,6,3], **kwargs)
+
+def resnet101_flexible(**kwargs):
+    return ResNet(Bottleneck, [3,4,23,3], **kwargs)
