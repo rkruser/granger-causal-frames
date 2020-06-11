@@ -12,7 +12,7 @@
 # Somewhere I need a loader function to truncate vids, etc.
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from collections import namedtuple
 import torch
 from torch.utils.data import Dataset
