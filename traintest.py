@@ -6,7 +6,7 @@ import numpy as np
 from utils import AverageMeter, MeterBox, MetricBox, FolderTracker, VideoPredictions
 from utils import best_step_fit
 from flexible_resnet import resnet50_flexible, resnet101_flexible, resnet18_flexible
-from video_loader import BeamNG_FileTracker, VideoDataset, label_func_1, frame_transform_1
+from video_loader import BeamNG_FileTracker, VideoDataset, label_func_1, label_func_prediction_only frame_transform_1
 from config import get_config, trainvids, testvids
 
 
@@ -20,6 +20,11 @@ Todo Wednesday June 10th
 - Run many hyperparam searches
 - Meanwhile, create pipeline to visualize all the summary data
 - Look into quickly plugging in other datasets (Need to put your videoloader interface over them)
+'''
+
+'''
+Todo Thursday June 11th
+- Rerun prob predictor models since you used the wrong label function
 '''
 
 
@@ -314,6 +319,7 @@ def construct_dataset_from_config(cfg, vidlist):
     trunc_list = np.zeros(len(vidlist)).astype('bool')
     trunc_list[np.arange(len(vidlist))%2 == 0] = True
     label_postprocess = True if cfg.use_q_loss else False
+    label_func = label_func_1 if cfg.use_q_loss else label_func_prediction_only #!!!!! Problem last time
     ftracker = BeamNG_FileTracker(cfg.data_directory, basename_list=vidlist, crash_truncate_list=trunc_list)
     dataset = VideoDataset(vidfiles=ftracker.file_list(),
                            videoinfo=ftracker.file_info(),
