@@ -211,28 +211,28 @@ trainvids = [
     'v16_7.mp4',
     'v16_9.mp4',
     'v16_10.mp4',
-    'v17.mp4', #Beginning of multicar
-    'v18_1.mp4',
-    'v19.mp4',
-    'v20.mp4',
-    'v22.mp4',
-    'v23.mp4',
-    'v25.mp4',
-    'v26.mp4',
-    'v28.mp4',
-    'v29.mp4',
-    'v31.mp4',
-    'v32.mp4',
-    'v34.mp4',
-    'v35.mp4',
-    'v37.mp4',
-    'v38.mp4',
-    'v40.mp4',
-    'v41.mp4',
-    'v43.mp4',
-    'v44.mp4',
-    'v46.mp4',
-    'v47.mp4'
+#    'v17.mp4', #Beginning of multicar
+#    'v18_1.mp4',
+#    'v19.mp4',
+#    'v20.mp4',
+#    'v22.mp4',
+#    'v23.mp4',
+#    'v25.mp4',
+#    'v26.mp4',
+#    'v28.mp4',
+#    'v29.mp4',
+#    'v31.mp4',
+#    'v32.mp4',
+#    'v34.mp4',
+#    'v35.mp4',
+#    'v37.mp4',
+#    'v38.mp4',
+#    'v40.mp4',
+#    'v41.mp4',
+#    'v43.mp4',
+#    'v44.mp4',
+#    'v46.mp4',
+#    'v47.mp4'
 ]
 
 testvids = [
@@ -265,17 +265,17 @@ testvids = [
     'v15_6.mp4',
     'v2_8.mp4',
     'v2_10.mp4',
-    'v18_2.mp4', #Beginning of multicar
-    'v21.mp4',
-    'v24.mp4',
-    'v27.mp4',
-    'v30.mp4',
-    'v33.mp4',
-    'v36.mp4',
-    'v39.mp4',
-    'v42.mp4',
-    'v45.mp4',
-    'v48.mp4'
+#    'v18_2.mp4', #Beginning of multicar
+#    'v21.mp4',
+#    'v24.mp4',
+#    'v27.mp4',
+#    'v30.mp4',
+#    'v33.mp4',
+#    'v36.mp4',
+#    'v39.mp4',
+#    'v42.mp4',
+#    'v45.mp4',
+#    'v48.mp4'
 ]
 
 

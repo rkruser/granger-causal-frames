@@ -10,3 +10,7 @@
 --batch_size 32 --checkpoint_every 5 --network_type resnet101 --overwrite_last 1 --use_q_loss 1 --use_transitions 1 --frames_per_datapoint 2
 --batch_size 32 --checkpoint_every 5 --network_type resnet101 --overwrite_last 1 --use_q_loss 1 --use_transitions 1 --frames_per_datapoint 3
 --batch_size 32 --checkpoint_every 5 --network_type resnet101 --overwrite_last 1 --use_q_loss 1 --use_transitions 1 --frames_per_datapoint 4
+
+
+
+
