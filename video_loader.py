@@ -293,7 +293,7 @@ class VideoFile:
         
 
         
-def play_video(frames, frame_duration=40, fps=None, scale=1.0, playback_speed=1.0, window_name='video',
+def play_video(frames, frame_duration=1.0/30, fps=None, scale=1.0, playback_speed=1.0, window_name='video',
              playback_transform = lambda f: cv2.cvtColor(f, cv2.COLOR_RGB2BGR) ):
     print("Press q to stop playback")
 
