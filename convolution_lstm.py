@@ -72,7 +72,7 @@ class ConvLSTM(nn.Module):
         # input size: (b, t == # of frames, c, h, w)
 
         # switch the input with # of frames first
-        input = input.pernute(1, 0, 2, 3, 4)
+        input = input.permute(1, 0, 2, 3, 4)
         internal_state = []
         outputs = []
         for step in range(self.step):
