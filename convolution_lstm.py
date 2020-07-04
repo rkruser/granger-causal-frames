@@ -69,7 +69,10 @@ class ConvLSTM(nn.Module):
             self._all_layers.append(cell)
 
     def forward(self, input):
-        # input size: (t==# of frames, b, c, h, w)
+        # input size: (b, t == # of frames, c, h, w)
+
+        # switch the input with # of frames first
+        input = input.pernute(1, 0, 2, 3, 4)
         internal_state = []
         outputs = []
         for step in range(self.step):
