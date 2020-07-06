@@ -66,16 +66,16 @@ class ConvLSTM(nn.Module):
             setattr(self, name, cell)
             self._all_layers.append(cell)
 
-    def forward(self, input):
-        # input size: (b, t == # of frames, c, h, w)
+    def forward(self, X):
+        # X size: (b, t == # of frames, c, h, w)
 
         # switch the input with # of frames first
-        _, timesteps, _, _, _ = input.size()
-        input = input.permute(1, 0, 2, 3, 4)
+        _, timesteps, _, _, _ = X.size()
+        X = X.permute(1, 0, 2, 3, 4)
         internal_state = []
         outputs = []
         for step in range(timesteps):
-            x = input[step]
+            x = X[step]
             for i in range(self.num_layers):
                 # all cells are initialized in the first step
                 name = 'cell{}'.format(i)

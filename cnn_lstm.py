@@ -12,30 +12,34 @@ class CNNLSTM(nn.Module):
 
         if self.cnn_type == 'resnet18':
             self.cnn = models.resnet18(pretrained=True)
+            self.lstm_input_size = 512
         elif self.cnn_type == 'resnet50':
             self.cnn = models.resnet50(pretrained=True)
+            self.lstm_input_size = 2048
         elif self.cnn_type == 'resnet101':
             self.cnn = models.resnet101(pretrained=True)
+            self.lstm_input_size = 2048
         elif self.cnn_type == 'resnet152':
             self.cnn = models.resnet152(pretrained=True)
+            self.lstm_input_size = 2048
         else:
             raise ValueError("Unknown network_type option")
 
-        modules=list(self.cnn.children())[:-1]
+        modules = list(self.cnn.children())[:-1]
         self.cnn = nn.Sequential(*modules)
 
         if not self.if_cnn_trainabe:
             for p in self.cnn.parameters():
                 p.requires_grad = False
 
-        self.rnn = nn.LSTM(512, self.hidden_channels, self.num_layers, batch_first=True)
+        self.rnn = nn.LSTM(self.lstm_input_size, self.hidden_channels, self.num_layers, batch_first=True)
         self.fc = nn.Linear(self.hidden_channels, 1)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, input):
-        batch_size, timesteps, C, H, W = input.size()
-        input = input.view(batch_size*timesteps, C, H, W)
-        output = self.cnn(input)
+    def forward(self, X):
+        batch_size, timesteps, C, H, W = X.size()
+        X = X.view(batch_size*timesteps, C, H, W)
+        output = self.cnn(X)
         output = output.view(batch_size, timesteps, -1)
         output, _ = self.rnn(output)
         output = self.fc(output)
