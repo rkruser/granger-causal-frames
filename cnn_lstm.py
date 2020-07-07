@@ -44,6 +44,5 @@ class CNNLSTM(nn.Module):
         output, _ = self.rnn(output)
         output = self.fc(output)
         output = self.sigmoid(output)
-        output = output.view(batch_size, timesteps, -1)
 
         return output
