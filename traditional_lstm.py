@@ -1,6 +1,4 @@
-import torch
 import torch.nn as nn
-import torchvision.models as models
 
 class LSTM(nn.Module):
     def __init__(self, input_channels, hidden_channels, num_layers=1):
