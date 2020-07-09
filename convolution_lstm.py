@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-
 class ConvLSTMCell(nn.Module):
     def __init__(self, input_channels, hidden_channels, kernel_size):
         super(ConvLSTMCell, self).__init__()
@@ -50,17 +49,15 @@ class ConvLSTMCell(nn.Module):
 
 
 class ConvLSTM(nn.Module):
-    def __init__(self, input_channels, hidden_channels, kernel_size, step=1, effective_step=[1]):
+    def __init__(self, input_channels, hidden_channels, kernel_size):
         # hidden_channels: the list of hidden_channels for each step of ConvLSTM
-        # step: number of stacked ConvLSTMs in the model
+        # step: time steps
         # effective_step: the list of indices of stacked ConvLSTMs for desired outputs
         super(ConvLSTM, self).__init__()
         self.input_channels = [input_channels] + hidden_channels
         self.hidden_channels = hidden_channels
         self.kernel_size = kernel_size
         self.num_layers = len(hidden_channels)
-        self.step = step
-        self.effective_step = effective_step
         self._all_layers = []
         for i in range(self.num_layers):
             name = 'cell{}'.format(i)
@@ -68,12 +65,16 @@ class ConvLSTM(nn.Module):
             setattr(self, name, cell)
             self._all_layers.append(cell)
 
-    def forward(self, input):
-        # input size: (t==# of frames, b, c, h, w)
+    def forward(self, X):
+        # X size: (b, t == # of frames, c, h, w)
+
+        # switch the input with # of frames first
+        _, timesteps, _, _, _ = X.size()
+        X = X.permute(1, 0, 2, 3, 4)
         internal_state = []
         outputs = []
-        for step in range(self.step):
-            x = input[step]
+        for step in range(timesteps):
+            x = X[step]
             for i in range(self.num_layers):
                 # all cells are initialized in the first step
                 name = 'cell{}'.format(i)
@@ -88,7 +89,6 @@ class ConvLSTM(nn.Module):
                 x, new_c = getattr(self, name)(x, h, c)
                 internal_state[i] = (x, new_c)
             # only record effective steps
-            if step + 1 in self.effective_step:
-                outputs.append(x)
+            outputs.append(x)
 
         return outputs, (x, new_c)
