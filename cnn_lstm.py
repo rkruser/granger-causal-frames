@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torchvision.models as models
 
@@ -37,11 +38,16 @@ class CNNLSTM(nn.Module):
 
     def forward(self, X):
         batch_size, timesteps, C, H, W = X.size()
+        seq_mask = torch.sum(X, 4)
+        seq_mask = torch.sum(seq_mask, 3)
+        seq_mask = torch.sum(seq_mask, 2)
+        seq_mask = seq_mask == 0
         X = X.view(batch_size*timesteps, C, H, W)
         output = self.cnn(X)
         output = output.view(batch_size, timesteps, -1)
         output, _ = self.rnn(output)
         output = self.fc(output)
         output = self.sigmoid(output)
+        output[seq_mask] = -1
 
         return output
