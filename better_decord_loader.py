@@ -67,7 +67,10 @@ def process_patch(arr, begin_point, end_point, frames_per_point, use_transitions
         if terminal:
             result_array = np.concatenate([result_array, np.stack([np.expand_dims(cur_array[-1],axis=0), 
                                                             np.zeros((1,)+cur_array[-1].shape)])], axis=1)
+
             # final shape: (2, #points, 3*frames_per_point, rows, cols)
+    else:
+        result_array = cur_array
 
     return result_array, terminal
 
@@ -266,12 +269,15 @@ def get_label_data(data_directory = data_directory, label_file = label_file):
 def test_loader():
     fullpaths, times, labels = get_label_data()
 
-    vidloader = VideoFrameLoader(fullpaths[:35],labels[:35],preload_num=16,shuffle_files=False, batch_size=64, frame_interval=3)
+    vidloader = VideoFrameLoader(fullpaths[:6],labels[:6],preload_num=2,shuffle_files=False, batch_size=10, frame_interval=3,
+                                 return_transitions=False)
 
     for batch, labels, vid_inds in vidloader:
         print(batch.size())
         print(batch.dtype)
-        print(batch[0,0,0,0,:3])
+#        print(batch[0,0,0,0,:3])
+        print(batch[0,0,0,:3])
+
         print(labels)
         print(vid_inds)
 
