@@ -290,12 +290,20 @@ def test_loader():
 #        print(vid_inds)
 
 
+def test2():
+    fullpaths, times, labels = get_label_data()
+    vidloader = VideoFrameLoader(fullpaths[:5],labels[:5],preload_num=2,shuffle_files=True, batch_size=64, frame_interval=3,
+                                 return_transitions=True)
 
 
+    for i in range(vidloader.num_videos()):
+        vid,label = vidloader.get_video(i)
+        print(vid.shape, vid.dtype, label)
 
 
 if __name__=='__main__':
-    test_loader()
+#    test_loader()
+    test2()
 
 
 
