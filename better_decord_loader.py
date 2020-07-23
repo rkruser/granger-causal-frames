@@ -213,6 +213,7 @@ class VideoFrameLoader:
 
         patches = []
         labels = []
+        terminals = []
         vid_inds = [] # [(vid_id, begin, end)]
         for i, arr in enumerate(self._preloaded):
             if split[i] == 0:
@@ -224,15 +225,19 @@ class VideoFrameLoader:
             label = self._preloaded_labels[i]
             arr_labels = self.label_func(label, begin, end, length) #Need to implement label_func
             process_arr, is_terminal = process_patch(arr, begin, end, self.frames_per_point, self.return_transitions)
+            terminal_array = np.zeros(end-begin,dtype=bool)
+            terminal_array[-1] = is_terminal
+            terminals.append(terminal_array)
             patches.append( process_arr )
             labels.append(arr_labels)
 
         cat_axis = 1 if self.return_transitions else 0
         batch = np.concatenate(patches, axis=cat_axis) # Axis 1 for transitions, 0 otherwise
         labels = np.concatenate(labels,axis=0)
+        terminals = np.concatenate(terminals,axis=0)
         self._preloaded_counters += split
 
-        return batch, labels, vid_inds
+        return batch, labels, terminals, vid_inds
 
 
     def __iter__(self):
@@ -240,12 +245,12 @@ class VideoFrameLoader:
         return self
 
     def __next__(self):
-        batch, labels, vid_inds = self._next_batch()
+        batch, labels, terminals, vid_inds = self._next_batch()
         batch_torch = torch.from_numpy(batch)
         batch_torch = batch_torch.float()
         batch_torch = batch_torch/255.0
         
-        return batch_torch, labels, vid_inds
+        return batch_torch, labels, terminals, vid_inds
         # Question! Does decord return 3xhxw or hxwx3?
         # Does it normalize the values to 0,1? Or have right data type?
 
@@ -269,17 +274,20 @@ def get_label_data(data_directory = data_directory, label_file = label_file):
 def test_loader():
     fullpaths, times, labels = get_label_data()
 
-    vidloader = VideoFrameLoader(fullpaths[:6],labels[:6],preload_num=2,shuffle_files=False, batch_size=10, frame_interval=3,
-                                 return_transitions=False)
+    vidloader = VideoFrameLoader(fullpaths,labels,preload_num=50,shuffle_files=True, batch_size=256, frame_interval=5,
+                                 return_transitions=True)
 
-    for batch, labels, vid_inds in vidloader:
+    for i, k in enumerate(vidloader):
+        batch, labels, terminals, vid_inds = k
+        print("Batch", i)
         print(batch.size())
-        print(batch.dtype)
+#        print(batch.dtype)
 #        print(batch[0,0,0,0,:3])
-        print(batch[0,0,0,:3])
+#        print(batch[0,0,0,:3])
 
-        print(labels)
-        print(vid_inds)
+#        print(labels)
+#        print(terminals)
+#        print(vid_inds)
 
 
 
