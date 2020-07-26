@@ -7,7 +7,7 @@ import argparse
 from cnn_dataloader import CNNLSTMDataLoader
 from cnn_lstm import CNNLSTM
 
-parser = argparse.ArgumentParser(description='text_img_matching')
+parser = argparse.ArgumentParser(description='car_crash_prediction')
 parser.add_argument('--modelpath', type=str, required=False, default=None,
                     help='Path to saved model')
 parser.add_argument('--totest', type=str, required=False, default=None,
