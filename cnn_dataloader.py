@@ -3,6 +3,7 @@ from decord import VideoReader
 from decord import cpu
 import numpy as np
 import torch
+import math
 import six
 
 class CNNLSTMDataLoader:
@@ -42,6 +43,7 @@ class CNNLSTMDataLoader:
             self.labels = self.labels[:self.data_num]
 
         self.n_samples = len(self.full_paths)
+        self.num_batch = math.ceil(self.n_samples / self.batch_size)
 
     def __iter__(self):
         self._file_pointer = 0
@@ -55,7 +57,7 @@ class CNNLSTMDataLoader:
 
         if self._file_pointer >= self.n_samples:
             raise StopIteration
-            
+
         while self._file_pointer < next_pointer:
             vr = VideoReader(self.full_paths[self._file_pointer], ctx=cpu(0), width=self.image_shape[0], height=self.image_shape[1])
             n_frames = len(vr)
@@ -70,12 +72,18 @@ class CNNLSTMDataLoader:
         training_labels = np.zeros(inputs.shape[:2])
         weights = np.ones(inputs.shape[:2])
         actual_labels = np.zeros(inputs.shape[:2])
+        max_len = len(inputs[0])
+
         for i, label in enumerate(labels):
             if label >= 0:
                 training_labels[i][lengths[i] - 1:] = 1
                 actual_frame_num = int((30 * label)/self.frame_interval)
                 actual_labels[i][actual_frame_num:] = 1
             weights[i][lengths[i] - 1] = self.terminal_weight
+
+            # padding with the last frame
+            temp_padding = np.tile(inputs[i][lengths[i] - 1], (max_len - lengths[i] + 1, 1, 1, 1))
+            inputs[i][lengths[i] - 1:] = temp_padding
 
         inputs = inputs/255.0
 
@@ -87,6 +95,9 @@ class CNNLSTMDataLoader:
         return inputs, training_labels, weights, actual_labels
 
     def __len__(self):
+        return self.num_batch
+
+    def num_of_samples(self):
         return self.n_samples
 
 # From Keras

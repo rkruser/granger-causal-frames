@@ -35,21 +35,24 @@ class CNNLSTM(nn.Module):
         self.rnn = nn.LSTM(self.lstm_input_size, self.hidden_channels, self.num_layers, batch_first=True)
         self.fc = nn.Linear(self.hidden_channels, 1)
         self.sigmoid = nn.Sigmoid()
+        self.bn = nn.BatchNorm1d(self.hidden_channels)
 
     def forward(self, X):
         batch_size, timesteps, C, H, W = X.size()
-        seq_mask = torch.sum(X, 4)
-        seq_mask = torch.sum(seq_mask, 3)
-        seq_mask = torch.sum(seq_mask, 2)
-        seq_mask = seq_mask == 0
+        # seq_mask = torch.sum(X, 4)
+        # seq_mask = torch.sum(seq_mask, 3)
+        # seq_mask = torch.sum(seq_mask, 2)
+        # seq_mask = seq_mask == 0
         X = X.view(batch_size*timesteps, C, H, W)
         output = self.cnn(X)
         output = output.view(batch_size, timesteps, -1)
-        output[seq_mask] = 0
+        # output[seq_mask] = 0
         output, _ = self.rnn(output)
+        output = output.permute(0, 2, 1)
+        output = self.bn(output)
+        output = output.permute(0, 2, 1)
         output = self.fc(output)
         output = self.sigmoid(output)
         output = output.view(batch_size, timesteps)
-        # output[seq_mask] = -1
 
         return output

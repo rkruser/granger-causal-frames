@@ -3,9 +3,12 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import argparse
+import tqdm
 
 from cnn_dataloader import CNNLSTMDataLoader
 from cnn_lstm import CNNLSTM
+
+torch.set_printoptions(precision=4)
 
 parser = argparse.ArgumentParser(description='car_crash_prediction')
 parser.add_argument('--modelpath', type=str, required=False, default=None,
@@ -22,8 +25,8 @@ network_type = 'resnet101'
 hidden_channels = 512
 num_layers = 3
 if_cnn_trainabel = False
-learning_rate = 0.01
-use_q_loss = True
+learning_rate = 0.001
+use_q_loss = False
 model_save_path = '../test_model.pth'
 n_epochs = 1
 rl_gamma = 0.999
@@ -32,7 +35,7 @@ image_shape = (224,224,3)
 frame_interval = 3
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 batch_size = 2
-data_num = 100
+data_num = -1
 terminal_weight = 64
 
 dpath = 'D:/Beamng_research/recordings/Beamng_dataset_30fps'
@@ -66,6 +69,7 @@ class Model:
         self.network_type = network_type
         self.device = device
         self.rl_gamma = rl_gamma
+        self.prob_loss_func = nn.MSELoss()
 
         if load_network_path != None:
             self.network =  torch.load(load_network_path)
@@ -88,7 +92,7 @@ class Model:
 
     def q_loss(self, q_current, q_future, weights):
         diff = q_future - q_current
-        loss = (weights*(diff**2)).mean()
+        loss = (weights * (diff ** 2)).mean()
         return loss
 
     def q_update(self, x, y, weights, actual):
@@ -104,7 +108,7 @@ class Model:
         return q_current, loss.item()
 
     def prob_loss(self, predictions, actual):
-        return nn.MSELoss(predictions, actual)
+        return self.prob_loss_func(predictions, actual)
 
     def prob_update(self, x, y, weights, actual):
         predictions = self.network(x)
@@ -113,6 +117,11 @@ class Model:
         loss.backward()
         self.optimizer.step()
         return predictions, loss.item()
+
+    def no_grad_forward(self, x):
+        with torch.no_grad():
+            predictions = self.network(x)
+        return predictions
 
     def update(self, x, y, weights, actual):
         return self.update_func(x, y, weights, actual)
@@ -127,21 +136,43 @@ class Model:
         torch.save(self.network, model_save_path)
 
 def train(model):
+    loss = float('inf')
     for epoch in range(n_epochs):
         model.train()
-        print("Epoch:", epoch)
+        print('Epoch:', epoch)
+        pbar = tqdm.tqdm(total=len(train_loader))
         for i, batch in enumerate(train_loader):
             x, y, weights, actual = batch
             q_current, loss = model.update(x, y, weights, actual)
-            #print(q_current)
-            if i % 10 == 0:
-                print("  iteration:", i, ' loss: ', loss)
 
-        # less loss to save
-        model.save()
-        # if epoch % 5 == 0:
-        #     model.eval()
-        #     # evaluate
+            if i % 10 == 0:
+                pbar.write('  iteration:' + str(i) + ' loss:' + str(loss))
+                print(actual)
+                print(q_current)
+
+            pbar.update(1)
+
+        print('validating')
+        curr_loss = test(model, val_loader)
+
+        if curr_loss < loss:
+            print('lower loss! current loss:', curr_loss)
+            model.save()
+
+def test(model, data_loader):
+    # change actual the return value before the last frame to true value?
+    model.eval()
+    val_loss = []
+    pbar = tqdm.tqdm(total=len(data_loader))
+
+    for i, batch in enumerate(data_loader):
+        x, _, _, actual = batch
+        predictions = model.no_grad_forward(x)
+        curr_loss = model.prob_loss(predictions, actual)
+        val_loss.append(curr_loss.item())
+        pbar.update(1)
+
+    return np.mean(val_loss)
 
 def main():
     if to_test == None:
@@ -150,8 +181,9 @@ def main():
         print('start training')
         train(model)
     else:
-        exit('testing not implemented')
-        # testing
+        print('testing')
+        curr_loss = test(model, test_loader)
+        print('loss:', curr_loss)
 
 if __name__ == '__main__':
     main()
