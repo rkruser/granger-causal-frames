@@ -3,58 +3,101 @@ from decord import VideoReader
 from decord import cpu
 import numpy as np
 import torch
+import math
 import six
 
 class CNNLSTMDataLoader:
-    def __init__(self, annotation,
+    def __init__(self, dpath,
+                       annotation,
                        frame_interval=3,
                        image_shape=(224,224,3),
                        device='cuda',
                        batch_size=64,
-                       if_shuffle=False):
+                       if_shuffle=False,
+                       data_num=-1,
+                       terminal_weight=64):
 
+        self.dpath = dpath
         self.annotation = annotation
         self.frame_interval = frame_interval
         self.image_shape = image_shape
         self.device = device
         self.batch_size = batch_size
         self.if_shuffle = if_shuffle
+        self.data_num = data_num
+        self.terminal_weight = terminal_weight
 
-        with open(self.annotation) as f:
+        with open(self.dpath + '/' + self.annotation) as f:
             annotations = f.readlines()
 
         if self.if_shuffle:
             annotations = shuffle(annotations)
 
         annotations = [i.strip() for i in annotations]
-        self.n_samples = len(annotations)
-        self.pathes = [i.split()[0] for i in annotations]
+        self.full_paths = [self.dpath + i.split()[0][1:] for i in annotations]
         self.labels = [float(i.split()[1]) for i in annotations]
         self._file_pointer = 0
+
+        if self.data_num > 0:
+            self.full_paths = self.full_paths[:self.data_num]
+            self.labels = self.labels[:self.data_num]
+
+        self.n_samples = len(self.full_paths)
+        self.num_batch = math.ceil(self.n_samples / self.batch_size)
 
     def __iter__(self):
         self._file_pointer = 0
         return self
 
     def __next__(self):
-        next_pointer = min(self._file_pointer + self.batch_size, len(self.pathes))
-        outputs = []
+        next_pointer = min(self._file_pointer + self.batch_size, self.n_samples)
+        inputs = []
         lengths = []
+        labels = []
+
+        if self._file_pointer >= self.n_samples:
+            raise StopIteration
+
         while self._file_pointer < next_pointer:
-            vr = VideoReader(self.pathes[self._file_pointer], ctx=cpu(0), width=self.image_shape[0], height=self.image_shape[1])
+            vr = VideoReader(self.full_paths[self._file_pointer], ctx=cpu(0), width=self.image_shape[0], height=self.image_shape[1])
             n_frames = len(vr)
             frames = vr.get_batch(np.arange(0, n_frames, self.frame_interval)).asnumpy()
             frames = np.transpose(frames, (0, 3, 1, 2))
-            outputs.append(frames)
+            inputs.append(frames)
+            lengths.append(len(frames))
+            labels.append(self.labels[self._file_pointer])
             self._file_pointer += 1
 
-        outputs = pad_sequences(outputs, padding='post')
-        outputs = torch.from_numpy(outputs).float().to(self.device)
-        # what is y
-        # return type?
-        return outputs
+        inputs = pad_sequences(inputs, padding='post')
+        training_labels = np.zeros(inputs.shape[:2])
+        weights = np.ones(inputs.shape[:2])
+        actual_labels = np.zeros(inputs.shape[:2])
+        max_len = len(inputs[0])
+
+        for i, label in enumerate(labels):
+            if label >= 0:
+                training_labels[i][lengths[i] - 1:] = 1
+                actual_frame_num = int((30 * label)/self.frame_interval)
+                actual_labels[i][actual_frame_num:] = 1
+            weights[i][lengths[i] - 1] = self.terminal_weight
+
+            # padding with the last frame
+            temp_padding = np.tile(inputs[i][lengths[i] - 1], (max_len - lengths[i] + 1, 1, 1, 1))
+            inputs[i][lengths[i] - 1:] = temp_padding
+
+        inputs = inputs/255.0
+
+        inputs = torch.from_numpy(inputs).float().to(self.device)
+        training_labels = torch.from_numpy(training_labels).float().to(self.device)
+        weights = torch.from_numpy(weights).float().to(self.device)
+        actual_labels = torch.from_numpy(actual_labels).float().to(self.device)
+
+        return inputs, training_labels, weights, actual_labels
 
     def __len__(self):
+        return self.num_batch
+
+    def num_of_samples(self):
         return self.n_samples
 
 # From Keras
