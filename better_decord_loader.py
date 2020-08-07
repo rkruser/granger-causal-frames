@@ -250,7 +250,7 @@ class VideoFrameLoader:
         batch_torch = batch_torch.float()
         batch_torch = batch_torch/255.0
         
-        return batch_torch, labels, terminals, vid_inds
+        return batch_torch, torch.from_numpy(labels), torch.BoolTensor(terminals), torch.Tensor(vid_inds)
         # Question! Does decord return 3xhxw or hxwx3?
         # Does it normalize the values to 0,1? Or have right data type?
 
