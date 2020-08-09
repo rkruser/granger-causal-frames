@@ -1,17 +1,17 @@
 import decord
 import torch
 import numpy as np
+import pickle
 import os
 import cv2
 from config import datadir, trainvids, testvids
 from video_loader import play_video
 
+data_directory = '/mnt/linuxshared/data/BeamNG'
+label_file = 'full_annotation.txt'
+split_file = 'traintest_split.pkl'
 
-train_fullpaths = [os.path.join(datadir, vid) for vid in trainvids[:10]]
-
-decord.bridge.set_bridge('torch') #May as well set it to numpy
-
-# Maybe use every 3rd frame instead of every 5th
+decord.bridge.set_bridge('torch') 
 
 def split_num(num, parts):
     div = num // parts
@@ -149,7 +149,7 @@ class VideoFrameLoader:
         frames = reader.get_batch(np.arange(0,n_frames,self.frame_interval))
         frames = frames.permute(0,3,1,2)
         
-        frames, _ = process_patch(frames, 0, len(frames), self.frames_per_point, use_transitions=False)
+        frames, _ = process_patch(frames.numpy(), 0, len(frames), self.frames_per_point, use_transitions=False)
         frames = torch.from_numpy(frames) # Do any reshaping?
         frames = frames.float()
         frames = frames/255.0
@@ -241,7 +241,7 @@ class VideoFrameLoader:
 
 
     def __iter__(self):
-#        self_reset()  # done elsewhere
+        self._reset()  # This probably works
         return self
 
     def __next__(self):
@@ -256,18 +256,25 @@ class VideoFrameLoader:
 
 
 
-
-data_directory = '/mnt/linuxshared/data/BeamNG'
-label_file = 'full_annotation.txt'
-
-def get_label_data(data_directory = data_directory, label_file = label_file):
+def get_label_data(data_directory = data_directory, label_file = label_file, split_file=split_file):
     with open(os.path.join(data_directory, label_file), 'r') as labfile:
         lines = labfile.readlines()
         split = [l.split() for l in lines]
 
-        annotations = [ (os.path.join(data_directory,l[0].lstrip('./')), float(l[1]), 1 if float(l[1])>=0 else 0) for l in split ]
+        annotations = [ (os.path.join(data_directory,l[0].lstrip('./')), 
+                        float(l[1]), 
+                        1 if float(l[1])>=0 else 0) for l in split ]
         fullpaths, times, labels = zip(*annotations)
-        return fullpaths, times, labels
+
+        if split_file:
+            train_inds, test_inds = pickle.load(open(os.path.join(data_directory,split_file),'rb'))
+            fullpaths, times, labels = np.array(fullpaths), np.array(times), np.array(labels)
+            train_fullpaths, train_times, train_labels = fullpaths[train_inds], times[train_inds], labels[train_inds]
+            test_fullpaths, test_times, test_labels = fullpaths[test_inds], times[test_inds], labels[test_inds]
+
+            return (train_fullpaths, train_times, train_labels), (test_fullpaths, test_times, test_labels)
+        else:
+            return fullpaths, times, labels
 
 
 

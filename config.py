@@ -2,8 +2,8 @@
 import argparse
 import sys
 
-import socket
-hostname = socket.gethostname()
+from socket import gethostname# as hostname
+hostname = gethostname()
 if 'LV426' in hostname:
     datadir = '/mnt/linuxshared/phd-research/data/beamng_vids/all_vids'
     modeldir = './models'
@@ -25,12 +25,12 @@ all_unique_default_config_params = {
     'num_data_workers':4,
     'shuffle_train_data':True,
 
-
     # Model / Data
     'network_type': 'resnet50',
     'frames_per_datapoint': 3,
     'use_transitions': True,
-    'use_color': False,
+    'use_color': True,
+    'image_shape': (224,224,3),
     'rl_gamma': 0.999,
     'use_q_loss': True,
     'terminal_weight':64, #weight of terminal states in loss
@@ -39,6 +39,7 @@ all_unique_default_config_params = {
     'frame_sample_freq': 5, #every 5th frame
     'overlap_datapoints': True,
     'frame_subtraction': False,
+    'preload_num':40,
 
 
     # Optimizer
