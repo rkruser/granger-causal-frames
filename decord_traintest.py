@@ -390,8 +390,8 @@ def test_model(model_path, cfg, savename='results.pkl'):
     all_train_predictions = []
     for i in range(train_set.num_videos()):
         print("Train video", i)
-        frames, label = test_set.get_video(i)
-        print("...label",label)
+        frames, label = train_set.get_video(i)
+#        print("...label",label)
         predictions, _ = model.predict_video(frames)    
         all_train_predictions.append(predictions)
         
@@ -403,7 +403,7 @@ def test_model(model_path, cfg, savename='results.pkl'):
     for i in range(test_set.num_videos()):
         print("Test video", i)
         frames, label = test_set.get_video(i)
-        print("...label",label)
+#        print("...label",label)
         predictions, _ = model.predict_video(frames)    
         all_test_predictions.append(predictions)
         
