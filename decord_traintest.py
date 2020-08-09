@@ -2,12 +2,13 @@ import torch
 import pickle
 import os
 import numpy as np
+import argparse
 
 from utils import AverageMeter, MeterBox, MetricBox, FolderTracker, VideoPredictions
 from utils import best_step_fit
 from flexible_resnet import resnet50_flexible, resnet101_flexible, resnet18_flexible
 #from video_loader import BeamNG_FileTracker, VideoDataset, label_func_1, label_func_prediction_only frame_transform_1
-from config import get_config, trainvids, testvids
+from config import get_config #, trainvids, testvids
 
 # Add better_decord_loader imports
 from better_decord_loader import VideoFrameLoader, get_label_data
@@ -110,13 +111,17 @@ class Model:
         predictions = []
         with torch.no_grad():
             if self.cfg.overlap_datapoints:
-                for i in range(len(video)-input_size+1):
-                    prediction = self.network(video[i:i+input_size].unsqueeze(0))
-                    predictions.append(prediction.item())
+                for chunk in torch.chunk(video, (len(video)//self.cfg.batch_size)+1):
+                    prediction = self.network(chunk)
+                    predictions.append(prediction.squeeze(1))
+#@                for i in range(len(video)-input_size+1):
+#@                    prediction = self.network(video[i:i+input_size].unsqueeze(0))
+#@                    predictions.append(prediction.item())
             else:
                 pass
 
-        predictions = torch.Tensor(predictions)
+        predictions = torch.cat(predictions)
+#        predictions = torch.Tensor(predictions)
         loss = None
         if y_vals is not None:
             if self.cfg.use_q_loss:
@@ -159,6 +164,15 @@ class Model:
         with open(os.path.join(path,'model.th'), 'wb') as f:
             #pickle.dump(self, f)
             torch.save({'model_state_dict':self.network.state_dict(), 'optimizer_state_dict':self.optimizer.state_dict(), 'config':self.cfg}, f)
+
+    def load_from(self, model_save_path):
+        with open(model_save_path,'rb') as f:
+            print("Loading model from", model_save_path)
+            print("Loading onto", self.device)
+            params = torch.load(f, map_location=self.device)
+            self.network.load_state_dict(params['model_state_dict'])
+            self.optimizer.load_state_dict(params['optimizer_state_dict'])
+
 
 
 def compute_summary(video_stats):
@@ -360,6 +374,59 @@ def train_standard(cfg_str = None, job_id=None):
     run_job(train_fullpaths, train_labels, test_fullpaths, test_labels, cfg_str=cfg_str, jobid=job_id)
 
 
+def test_model(model_path, cfg, savename='results.pkl'):
+    print("Testing")
+    print(cfg)
+
+    train, test = get_label_data()
+    train_fullpaths, train_times, train_labels = train
+    test_fullpaths, test_times, test_labels = test
+    train_set = construct_dataset_from_config(cfg, train_fullpaths, train_labels, shuffle_files=False)
+    test_set = construct_dataset_from_config(cfg, test_fullpaths, test_labels, shuffle_files=False)
+    model = construct_model_from_config(cfg)
+    model.load_from(model_path)
+    model.eval()
+
+    all_train_predictions = []
+    for i in range(train_set.num_videos()):
+        print("Train video", i)
+        frames, label = test_set.get_video(i)
+        print("...label",label)
+        predictions, _ = model.predict_video(frames)    
+        all_train_predictions.append(predictions)
+        
+
+    all_train_predictions = np.array(all_train_predictions)
+
+
+    all_test_predictions = []
+    for i in range(test_set.num_videos()):
+        print("Test video", i)
+        frames, label = test_set.get_video(i)
+        print("...label",label)
+        predictions, _ = model.predict_video(frames)    
+        all_test_predictions.append(predictions)
+        
+
+    all_test_predictions = np.array(all_test_predictions)
+
+    collected_results = {
+        "train_fullpaths": train_fullpaths,
+        "train_times": train_times,
+        "train_labels": train_labels,
+        "test_fullpaths": test_fullpaths,
+        "test_times": test_times,
+        "test_labels": test_labels,
+        "train_predictions": all_train_predictions,
+        "test_predictions": all_test_predictions,
+        "config": cfg
+    }
+
+    with open(savename,'wb') as fobj:
+        pickle.dump(collected_results, fobj)
+
+
+
 #def test_pipeline():
 #    run_job(cfg_str='--batch_size 32 --n_epochs 5 --checkpoint_every 2 --model_name test --network_type resnet101 --overwrite_last 1 --use_q_loss 0 --use_transitions 0',
 #                        trainvideos=['v1_1.mp4', 'v1_2.mp4'],
@@ -383,7 +450,31 @@ if __name__ == '__main__':
 #    test_pipeline()
 #    run_from_file()
 
-    cfg_str = "--model_name model_on_new_dataset --network_type resnet50 --batch_size 64 --terminal_weight 64 --frames_per_datapoint 10 --frame_sample_freq 3 --preload_num 10 --n_epochs 100 --checkpoint_every 1 --overwrite_last 1" 
-    train_standard(cfg_str)
+#    cfg_str = "--model_name model_on_new_dataset --network_type resnet50 --batch_size 64 --terminal_weight 64 --frames_per_datapoint 10 --frame_sample_freq 3 --preload_num 10 --n_epochs 100 --checkpoint_every 1 --overwrite_last 1" 
+
+#    train_standard(cfg_str)
+
+
+    default_model_dir = '/mnt/linuxshared/phd-research/better_causalFrames/models/model_on_new_dataset_08-09-2020-05:48:37/'
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--train', action='store_true')
+    parser.add_argument('--test', action='store_true')
+    parser.add_argument('--load_model_dir', type=str, default=default_model_dir)
+#    parser.add_argument('--load_model_num', type=int, default=-1)
+    parser.add_argument('--test_results_savename', type=str, default='results.pkl')
+    opt, _ = parser.parse_known_args()
+    
+#    if opt.train:
+#        train_standard()
+    if opt.test:
+        print("in opt.test")
+        model_path = os.path.join(opt.load_model_dir, 'model.th')
+        config_path = os.path.join(opt.load_model_dir, 'config_info.pkl')
+        model_cfg, _ = pickle.load(open(config_path,'rb'))
+        update_cfg, _ = get_config(default_dict=model_cfg.__dict__)
+        test_model(model_path, update_cfg, savename=opt.test_results_savename)        
+            
+
 
 

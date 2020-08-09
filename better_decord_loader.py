@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 import os
 import cv2
-from config import datadir, trainvids, testvids
+from config import datadir #, trainvids, testvids
 from video_loader import play_video
 
 data_directory = '/mnt/linuxshared/data/BeamNG'
