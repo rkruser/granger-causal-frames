@@ -6,6 +6,7 @@ import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--results_file', type=str, required=True)
+parser.add_argument('--sigmoid', action='store_true')
 opt = parser.parse_args()
 
 
@@ -25,6 +26,19 @@ with open(opt.results_file,'rb') as f:
 
 train_predictions = results['train_predictions']
 test_predictions = results['test_predictions']
+print(type(test_predictions))
+print(len(test_predictions))
+print(test_predictions[0].size())
+
+sys.exit()
+
+if opt.sigmoid:
+    print("Applying sigmoid")
+    for i in range(len(train_predictions)):
+        train_predictions[i] = torch.sigmoid(train_predictions[i])
+    for i in range(len(test_predictions)):
+        test_predictions[i] = torch.sigmoid(test_predictions[i])
+
 train_times = results['train_times']
 test_times = results['test_times']
 train_labels = results['train_labels']
