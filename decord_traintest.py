@@ -11,7 +11,7 @@ from flexible_resnet import resnet50_flexible, resnet101_flexible, resnet18_flex
 from config import get_config #, trainvids, testvids
 
 # Add better_decord_loader imports
-from better_decord_loader import VideoFrameLoader, get_label_data
+from decord_loader import VideoFrameLoader, get_label_data
 
 
 # Later make this more flexible class Model:

@@ -1,19 +1,89 @@
 import decord
-#import decord# import VideoLoader, VideoReader
-#from decord# import cpu, gpu
 import torch
-import torchvision.transforms.functional as tfunc
 import numpy as np
-
+import pickle
 import os
 import cv2
-from config import datadir, trainvids, testvids
-from video_loader import play_video
+from config import datadir #, trainvids, testvids
+#from video_loader import play_video
 
-train_fullpaths = [os.path.join(datadir,vid) for vid in trainvids[:10]]
+data_directory = '/mnt/linuxshared/data/BeamNG'
+label_file = 'full_annotation.txt'
+split_file = 'traintest_split.pkl'
 
-decord.bridge.set_bridge('torch')
+decord.bridge.set_bridge('torch') 
 
+def split_num(num, parts):
+    div = num // parts
+    rem = num % parts
+    split = np.empty(parts,dtype='int64')
+    split.fill(div)
+    split[:rem] += 1
+    return split
+
+# Given size of batch, allocate items from batch according to counts
+def split_batch_between(size, counts):
+    counts = np.array(counts)
+    total = np.sum(counts)
+    if size >= total: # Last batch
+        return counts
+
+    split = split_num(size, len(counts))
+    split = np.minimum(split, counts)
+    split_total = np.sum(split)
+    diffs = counts-split
+    gap = size - split_total
+    while gap > 0:
+        mask = diffs>0
+        newsplit = split_num(gap, np.sum(mask))
+        split[mask] += newsplit
+        split = np.minimum(split, counts)
+        split_total = np.sum(split)
+        diffs = counts-split
+        gap = size-split_total
+    return split
+    
+# Assume patch has already been frame subsampled and scaled to correct size
+def process_patch(arr, begin_point, end_point, frames_per_point, use_transitions=True):
+    begin_ind = begin_point
+    end_ind = end_point+frames_per_point-1
+    terminal = False
+    if use_transitions:
+        end_ind += 1
+    if end_ind == len(arr)+1:
+        end_ind = len(arr)
+        terminal = True
+
+    patch = arr[begin_ind:end_ind]
+
+    # Get sets of frames
+    size = len(patch)
+    cur_array = [ patch[i:(size-frames_per_point+i+1)] for i in range(frames_per_point) ]
+    cur_array = np.concatenate(cur_array, axis=1)
+    size = len(cur_array)
+
+    if use_transitions:
+        result_array = np.stack([cur_array[:(size-1)], cur_array[1:]])
+        if terminal:
+            result_array = np.concatenate([result_array, np.stack([np.expand_dims(cur_array[-1],axis=0), 
+                                                            np.zeros((1,)+cur_array[-1].shape)])], axis=1)
+
+            # final shape: (2, #points, 3*frames_per_point, rows, cols)
+    else:
+        result_array = cur_array
+
+    return result_array, terminal
+
+def rl_label_func(label, begin, end, length):
+    l = np.zeros(end-begin)
+    if end == length:
+        l[-1] = label
+    return l
+
+def regular_label_func(label, begin, end, length):
+    l = np.empty(end-begin)
+    l.fill(label)
+    return l
 
 class VideoFrameLoader:
     # randomization_level = decord's shuffle
@@ -24,211 +94,251 @@ class VideoFrameLoader:
     # overlap_points : overlap points with multiple frames or not
     # return_transitions : obtain video transitions
     def __init__(self, vid_list, 
+                       label_list, #list of vid labels (crash or no crash)
                        batch_size=64, 
                        image_shape=(224,224,3), 
-                       post_transform = None,
-                       randomization_level=1,
-                       inter_batch_skip=0,
-                       intra_batch_skip=0,
-
+#                       post_transform = None,
+                       shuffle_files=True,
+                       preload_num=16,
+#                       randomization_level=1,
+#                       inter_batch_skip=0,
+#                       intra_batch_skip=0,
+                       frame_interval=5,
                        frames_per_point=3,
                        overlap_points=True,
                        return_transitions=True
                        ):
 
-        assert(randomization_level == 0 or randomization_level == 1)
-        self.loader = decord.VideoLoader(vid_list, 
-                                         ctx=decord.cpu(), 
-                                         shape=(batch_size,)+image_shape, 
-                                         interval=intra_batch_skip,
-                                         skip=inter_batch_skip,
-                                         shuffle=randomization_level)
-        self.post_transform = post_transform
+
+        self.shuffle_files = shuffle_files
+        self.file_shuffle = np.arange(len(vid_list))
+        self.file_list = vid_list
+        self.label_list = label_list
+        self.image_shape = image_shape
+        self.frame_interval = frame_interval
+        self.batch_size = batch_size
+
+#        assert(randomization_level == 0 or randomization_level == 1)
+#        self.loader = decord.VideoLoader(vid_list, 
+#                                         ctx=decord.cpu(), 
+#                                         shape=(batch_size,)+image_shape, 
+#                                         interval=intra_batch_skip,
+#                                         skip=inter_batch_skip,
+#                                         shuffle=randomization_level)
+#        self.post_transform = post_transform
         self.overlap_points = overlap_points
         self.frames_per_point = frames_per_point
         self.return_transitions = return_transitions
 
+        if self.return_transitions:
+            self.label_func = rl_label_func
+        else:
+            self.label_func = regular_label_func
 
-        self._length = len(self.loader)
-        self._loader_iter = None
-        self._current_index = 0
-        self._current_batch = None
-        self._next_batch = None
+        self._preload_num = preload_num
 
+        self._reset()
+
+
+    def num_videos(self):
+        return len(self.file_list)
+
+    def get_video(self, i):
+        reader = decord.VideoReader(self.file_list[i], ctx=decord.cpu(0), width=self.image_shape[0], height=self.image_shape[1])
+        n_frames = len(reader)
+        frames = reader.get_batch(np.arange(0,n_frames,self.frame_interval))
+        frames = frames.permute(0,3,1,2)
         
+        frames, _ = process_patch(frames.numpy(), 0, len(frames), self.frames_per_point, use_transitions=False)
+        frames = torch.from_numpy(frames) # Do any reshaping?
+        frames = frames.float()
+        frames = frames/255.0
+        return frames, self.label_list[i]
 
-    def __len__(self):
-        return self._length
+
+    def _reset(self):
+        if self.shuffle_files:
+            self.file_shuffle = np.random.permutation(self.file_shuffle)
+        
+        self._file_pointer = 0
+        self._preloaded = []
+        self._preloaded_indices = []
+        self._preloaded_labels = []
+        self._preloaded_lengths = np.array([])
+        self._preloaded_counters = np.array([])
+#        self._length = len(self.loader)
+#        self._loader_iter = None
+#        self._current_index = 0
+#        self._current_batch = None
+
+
+
+    # Preload several videos for training
+    def _preload_next(self):
+        print("Preloading", self.file_shuffle[self._file_pointer:self._file_pointer+self._preload_num])
+        if self._file_pointer == len(self.file_list):
+            self._reset()
+            raise StopIteration
+
+        self._preloaded = []
+        next_pointer = min(self._file_pointer + self._preload_num, len(self.file_list))
+        self._preloaded_indices = self.file_shuffle[self._file_pointer:next_pointer]
+        self._preloaded_labels = [self.label_list[i] for i in self._preloaded_indices]
+
+        while self._file_pointer < next_pointer:
+            index = self.file_shuffle[self._file_pointer]
+            reader = decord.VideoReader(self.file_list[index], ctx=decord.cpu(0), width=self.image_shape[0], height=self.image_shape[1])
+            n_frames = len(reader)
+
+            # Randomly choose an initial start point!
+            startframe = np.random.randint(3*self.frame_interval) #doesn't matter super much
+            frames = reader.get_batch(np.arange(startframe, n_frames, self.frame_interval)) # randomly change start frame to increase effective data
+            frames = frames.permute(0,3,1,2)
+            self._preloaded.append(frames.numpy())
+            self._file_pointer += 1
+
+        self._preloaded_lengths = np.array([len(arr)-self.frames_per_point+1 for arr in self._preloaded],dtype=int)
+        self._preloaded_counters = np.zeros(len(self._preloaded),dtype=int)
+
+
+    def _next_batch(self):
+        remaining = self._preloaded_lengths - self._preloaded_counters
+        if np.all(remaining == 0):
+            self._preload_next()
+            remaining = self._preloaded_lengths - self._preloaded_counters
+
+        mask = remaining>0
+        split = np.zeros(len(remaining),dtype=int)
+        split[mask] += split_batch_between(self.batch_size, remaining[mask])
+
+        patches = []
+        labels = []
+        terminals = []
+        vid_inds = [] # [(vid_id, begin, end)]
+        for i, arr in enumerate(self._preloaded):
+            if split[i] == 0:
+                continue
+            begin = self._preloaded_counters[i]
+            end = begin+split[i]
+            length = self._preloaded_lengths[i]
+            vid_inds.append((self._preloaded_indices[i], begin, end, length))
+            label = self._preloaded_labels[i]
+            arr_labels = self.label_func(label, begin, end, length) #Need to implement label_func
+            process_arr, is_terminal = process_patch(arr, begin, end, self.frames_per_point, self.return_transitions)
+            terminal_array = np.zeros(end-begin,dtype=bool)
+            terminal_array[-1] = is_terminal
+            terminals.append(terminal_array)
+            patches.append( process_arr )
+            labels.append(arr_labels)
+
+        cat_axis = 1 if self.return_transitions else 0
+        batch = np.concatenate(patches, axis=cat_axis) # Axis 1 for transitions, 0 otherwise
+        labels = np.concatenate(labels,axis=0)
+        terminals = np.concatenate(terminals,axis=0)
+        self._preloaded_counters += split
+
+        return batch, labels, terminals, vid_inds
+
 
     def __iter__(self):
-        self._current_index = 0
-        self._loader_iter = iter(self.loader)
+        self._reset()  # This probably works
         return self
 
     def __next__(self):
-        if self._current_index >= self._length:
-            raise StopIteration
+        batch, labels, terminals, vid_inds = self._next_batch()
+        batch_torch = torch.from_numpy(batch)
+        batch_torch = batch_torch.float()
+        batch_torch = batch_torch/255.0
+        
+        return batch_torch, torch.from_numpy(labels), torch.BoolTensor(terminals), torch.Tensor(vid_inds)
+        # Question! Does decord return 3xhxw or hxwx3?
+        # Does it normalize the values to 0,1? Or have right data type?
 
-        if self._current_index==0:
-            self._current_batch = next(self._loader_iter) # Is tuple of torch tensor and indices
+
+
+def get_label_data(data_directory = data_directory, label_file = label_file, split_file=split_file):
+    with open(os.path.join(data_directory, label_file), 'r') as labfile:
+        lines = labfile.readlines()
+        split = [l.split() for l in lines]
+
+        annotations = [ (os.path.join(data_directory,l[0].lstrip('./')), 
+                        float(l[1]), 
+                        1 if float(l[1])>=0 else 0) for l in split ]
+        fullpaths, times, labels = zip(*annotations)
+
+        if split_file:
+            train_inds, test_inds = pickle.load(open(os.path.join(data_directory,split_file),'rb'))
+            fullpaths, times, labels = np.array(fullpaths), np.array(times), np.array(labels)
+            train_fullpaths, train_times, train_labels = fullpaths[train_inds], times[train_inds], labels[train_inds]
+            test_fullpaths, test_times, test_labels = fullpaths[test_inds], times[test_inds], labels[test_inds]
+
+            return (train_fullpaths, train_times, train_labels), (test_fullpaths, test_times, test_labels)
         else:
-            self._current_batch = self._next_batch
-
-        if self._current_index < self._length-1:
-            self._next_batch = next(self._loader_iter)
-        else:
-            self._next_batch = None
-
-        self._current_index += 1
-        return self._transform(self._current_batch, self._next_batch)
-
-    # Apply all transforms to data batch
-    # Presume shuffle level 0 or 1, otherwise this doesn't work
-    def _transform(self, cur_batch, next_batch):
-        # cur_batch is never None when this function is called, but next_batch could be
-
-
-        cur_array = cur_batch[0]#.numpy()
-        if self.frames_per_point > len(cur_array):
-            return None, None
-        cur_inds = cur_batch[1]
-        next_size = 1 if self.overlap_points else self.frames_per_point #The else may not be right, not that it matters
-
-        if next_batch is not None and self.return_transitions:
-            next_array = next_batch[0]#.numpy()
-            next_inds = next_batch[1]
-            cur_array = torch.cat([cur_array, next_array[:next_size]])
-            cur_inds = cur_inds + next_inds[:next_size]
-        else:
-            next_inds = None
-            if self.return_transitions:
-                cur_array = torch.cat([cur_array, torch.zeros((next_size,)+cur_array.size()[1:], dtype=cur_array.dtype)])
-                cur_inds = cur_inds + [[-1,-1] for _ in range(next_size)]
-
-        cur_array = self.post_transform(cur_array.numpy()) if self.post_transform is not None else cur_array
-        cur_array = torch.Tensor(cur_array)
-        size = len(cur_array) #including extra point on end
-
-        # Don't need whole next_array, just next few points from it
-
-
-        # Todo:
-        #  Reshape into torch rgb pane format [3, x, y]
-        cur_array = cur_array.permute(0,3,1,2)
-
-        #  Reshape being mindful of frames_per_point and overlap_points
-        # need torch.gather I think
-        # or not
-        if self.overlap_points:
-            cur_array = [ cur_array[i:(size-self.frames_per_point+i+1)] for i in range(self.frames_per_point) ]
-            cur_array = torch.cat(cur_array, dim=1)
-            cur_inds = cur_inds[(self.frames_per_point-1):] #identify multiframes with index of last frame
-        else:
-            pass
-
-        #  Reshape being mindful of transitions
-        if self.return_transitions:
-            cur_array = torch.stack([ cur_array[:(size-1)], cur_array[1:] ])#.transpose(1,0) #don't really need transpose
-            cur_inds = cur_inds[:(size-1)] #Label of next transition not counted
-
-        #  Change to float
-        cur_array = cur_array.float()
-
-        #  Return
-        return cur_array, cur_inds
+            return fullpaths, times, labels
 
 
 
+def test_loader():
+    fullpaths, times, labels = get_label_data()
 
+    vidloader = VideoFrameLoader(fullpaths,labels,preload_num=50,shuffle_files=True, batch_size=256, frame_interval=5,
+                                 return_transitions=True)
 
+    for i, k in enumerate(vidloader):
+        batch, labels, terminals, vid_inds = k
+        print("Batch", i)
+        print(batch.size())
+#        print(batch.dtype)
+#        print(batch[0,0,0,0,:3])
+#        print(batch[0,0,0,:3])
 
-
-
-
-
-
-
-
-
-
-
-
-
-# Todo: wrap decord loader in class that can be used for training with transitions
-
-
-def torch_tensor_transform(t, batch=True):
-    # transform rgb uint8
-    if batch:
-        t = t.permute(0,3,1,2)
-    else:
-        t = t.permute(2,0,1)
-    t = tfunc.to_grayscale(t)
-    t = t.float()
-
-    return t
-
-def tensor2cv(t, batch=True):
-    if batch:
-        t = t.permute(0,2,3,1)
-    else:
-        t = t.permute(1,2,0)
-    t = t.numpy().astype('uint8')
-#    t = t.numpy()
-##    t = t.transpose(0,3,1,2)
-#    t = cv2.cvtColor(t, cv2.COLOR_RGB2BGR)
-    return t
-
-
-
-
-
-def test1():
-    vidloader = decord.VideoLoader(train_fullpaths, ctx=decord.cpu(), shape=(8,224,224,3), interval=0, skip=-1, shuffle=0)
-    print(vidloader)
-    print(type(vidloader))
-    print(len(vidloader))
-    
-    for batch in vidloader:
-        data, inds = batch
-        print(type(data))
-        print(data.shape)
-        print(data.dtype)
-        #data = np.array(data)
-        data = data.numpy()
-        print(type(data))
-        print(data.dtype)
-        print(data.shape)
-        print(inds)
-#        print( 
-        input("continue")
+#        print(labels)
+#        print(terminals)
+#        print(vid_inds)
 
 
 def test2():
-    vr = VideoReader(os.path.join(datadir,trainvids[0]), ctx=cpu(0), width=224, height=224)
-    print(len(vr))
-    print(vr.get_avg_fps())
-    inds = [0,1,2,3,4,1,2,3,4,5]
-    frames = vr.get_batch(inds)
-    print(frames.size())
-    print(frames.dtype)
-    tstamps = vr.get_frame_timestamp(inds)
-    print(type(tstamps))
-    print(tstamps.shape)
-    print(tstamps)
-
-def test3():
-    vr = VideoReader(os.path.join(datadir,trainvids[0]), ctx=cpu(0), width=224, height=224)
-    frames = vr.get_batch(np.arange(len(vr)))
-    newframes = torch_tensor_transform(frames)
-    print(newframes.shape)
-    transformed_back = tensor2cv(newframes)
-    print(transformed_back.shape)
-#    play_video(frames.numpy())
-#    play_video(transformed_back)
+    fullpaths, times, labels = get_label_data()
+    vidloader = VideoFrameLoader(fullpaths[:5],labels[:5],preload_num=2,shuffle_files=True, batch_size=64, frame_interval=3,
+                                 return_transitions=True)
 
 
-# Note: get images as numpy, use cv2 to transform them to avoid the hassle of converting to PIL image
+    for i in range(vidloader.num_videos()):
+        vid,label = vidloader.get_video(i)
+        print(vid.shape, vid.dtype, label)
 
-test1()
+
+if __name__=='__main__':
+#    test_loader()
+    test2()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
