@@ -219,19 +219,17 @@ def train_and_test(model, train_dataset, test_dataset, cfg, args):
     # Training loop
     for epoch in range(cfg.n_epochs):
         print("Epoch", epoch)
-#        meters.train_batch_loss.reset()
+        meters.train_batch_loss.reset()
 
         # Iterate over dataset
         for i, batch in enumerate(train_dataset):
             _, loss = model.update(batch) #Do backprop and optimization step
-            if i%10 == 0:
-                print("  batch {0}, loss {1}".format(i,loss))
-            if i==5:
-                break
-
-
             batch_size = len(batch[0])
             meters.train_batch_loss.update(batch_size*loss, batch_size)
+
+            if i%10 == 0:
+                print("  batch {0}, loss {1}".format(i,meters.train_batch_loss.average()))
+
 #            metrics.all_train_batch_loss.append(loss)
 
         print("Epoch average loss", meters.train_batch_loss.average())
@@ -352,7 +350,7 @@ def random_seed(seed):
 
 
 def run_job(trainvids, trainlabels, testvids, testlabels, cfg_str = None, jobid=None):
-    cfg, args = get_config(cfg_str)
+    cfg, args = get_config(stringargs=cfg_str)
     if jobid is not None:
         cfg.model_name += '_'+str(jobid)
     if cfg.use_q_loss:
@@ -428,6 +426,7 @@ def test_model(model_path, cfg, savename='results.pkl'):
 
 
 if __name__ == '__main__':
+    '''
     default_model_dir = '/mnt/linuxshared/phd-research/better_causalFrames/models/model_on_new_dataset_08-09-2020-05:48:37/'
 
     parser = argparse.ArgumentParser()
@@ -437,9 +436,14 @@ if __name__ == '__main__':
 #    parser.add_argument('--load_model_num', type=int, default=-1)
     parser.add_argument('--test_results_savename', type=str, default='results.pkl')
     opt, _ = parser.parse_known_args()
+    '''
     
-    if opt.train:
-        train_standard()
+#    if opt.train:
+#    cfg_str = '--model_name ryen_sanity_check_model'
+#    train_standard(cfg_str)
+    train_standard()
+
+'''
     if opt.test:
         print("in opt.test")
         model_path = os.path.join(opt.load_model_dir, 'model.th')
@@ -447,7 +451,7 @@ if __name__ == '__main__':
         model_cfg, _ = pickle.load(open(config_path,'rb'))
         update_cfg, _ = get_config(default_dict=model_cfg.__dict__)
         test_model(model_path, update_cfg, savename=opt.test_results_savename)        
-            
+'''            
 
 
 

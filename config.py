@@ -27,7 +27,7 @@ default_config_params = {
 
     # Model / Data
     'network_type': 'resnet50',
-    'frames_per_datapoint': 3,
+    'frames_per_datapoint': 10,
     'use_transitions': True,
     'use_color': True,
     'image_shape': (224,224,3),
@@ -36,10 +36,10 @@ default_config_params = {
     'terminal_weight':64, #weight of terminal states in loss
 
     # Data preprocessing
-    'frame_sample_freq': 5, #every 5th frame
+    'frame_sample_freq': 3, #every 5th frame
     'overlap_datapoints': True,
     'frame_subtraction': False,
-    'preload_num':40,
+    'preload_num':20,
 
 
     # Optimizer
