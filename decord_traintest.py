@@ -438,8 +438,8 @@ if __name__ == '__main__':
     parser.add_argument('--test_results_savename', type=str, default='results.pkl')
     opt, _ = parser.parse_known_args()
     
-#    if opt.train:
-#        train_standard()
+    if opt.train:
+        train_standard()
     if opt.test:
         print("in opt.test")
         model_path = os.path.join(opt.load_model_dir, 'model.th')
