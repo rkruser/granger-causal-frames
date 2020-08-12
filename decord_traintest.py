@@ -427,34 +427,7 @@ def test_model(model_path, cfg, savename='results.pkl'):
 
 
 
-#def test_pipeline():
-#    run_job(cfg_str='--batch_size 32 --n_epochs 5 --checkpoint_every 2 --model_name test --network_type resnet101 --overwrite_last 1 --use_q_loss 0 --use_transitions 0',
-#                        trainvideos=['v1_1.mp4', 'v1_2.mp4'],
-#                        testvideos=['v1_3.mp4', 'v1_4.mp4'])
-#
-#
-#
-#def run_from_file():
-#    import argparse
-#    parser = argparse.ArgumentParser()
-#    parser.add_argument('--line', type=int, required=True)
-#    parser.add_argument('--experiment_file', type=str, default='experiment_args.txt')
-#    opt, _ = parser.parse_known_args()
-#    with open(opt.experiment_file,'r') as f:
-#        lines = f.readlines()
-#    run_job(cfg_str=lines[opt.line], trainvideos=trainvids, testvideos=testvids, jobid=opt.line)
-#    run_job_from_string(cfg_str=lines[opt.line], trainvideos=['v1_1.mp4', 'v1_2.mp4'], testvideos=['v1_3.mp4', 'v1_4.mp4'], jobid=opt.line)
-
-
 if __name__ == '__main__':
-#    test_pipeline()
-#    run_from_file()
-
-#    cfg_str = "--model_name model_on_new_dataset --network_type resnet50 --batch_size 64 --terminal_weight 64 --frames_per_datapoint 10 --frame_sample_freq 3 --preload_num 10 --n_epochs 100 --checkpoint_every 1 --overwrite_last 1" 
-
-#    train_standard(cfg_str)
-
-
     default_model_dir = '/mnt/linuxshared/phd-research/better_causalFrames/models/model_on_new_dataset_08-09-2020-05:48:37/'
 
     parser = argparse.ArgumentParser()
