@@ -58,7 +58,7 @@ class CNNLSTM(nn.Module):
         output = output.permute(0, 2, 1)
 
         output = self.fc(output)
-        output = self.sigmoid(output)
+        # output = self.sigmoid(output)
         output = output.view(batch_size, timesteps)
 
         return output
