@@ -70,7 +70,8 @@ class CNNLSTMDataLoader:
                 training_labels[i][lengths[i] - 1:] = 1
                 actual_frame_num = int((30 * label)/self.frame_interval)
                 actual_labels[i][actual_frame_num:] = 1
-            weights[i][lengths[i] - 1:] = self.terminal_weight
+            weights[i][lengths[i] - 1] = self.terminal_weight
+            weights[i][lengths[i]:] = 0
 
             # padding with the last frame
             temp_padding = np.tile(inputs[i][lengths[i] - 1], (max_len - lengths[i] + 1, 1, 1, 1))

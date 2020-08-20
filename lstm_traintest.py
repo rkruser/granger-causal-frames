@@ -5,6 +5,8 @@ import numpy as np
 import argparse
 import tqdm
 import time
+import json
+from socket import gethostname
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -28,6 +30,9 @@ parser.add_argument('--datanum', type=int, required=False, default=-1)
 parser.add_argument('--modelname', type=str, required=False, default='test')
 parser.add_argument('--learningrate', type=float, required=False, default=0.01)
 parser.add_argument('--networktype', type=str, required=False, default='resnet101')
+parser.add_argument('--terminalweight', type=float, required=False, default=1)
+parser.add_argument('--rlgamma', type=float, required=False, default=0.99)
+parser.add_argument('--epochstart', type=int, required=False, default=0)
 
 global args
 args = parser.parse_args()
@@ -40,20 +45,40 @@ data_num = args.datanum
 model_name = args.modelname
 learning_rate = args.learningrate
 network_type = args.networktype
+terminal_weight = args.terminalweight
+rl_gamma = args.rlgamma
+epoch_start = args.epochstart
 
 hidden_channels = 512
 num_layers = 3
 if_cnn_trainabel = False
-model_save_path = '/vulcanscratch/ywen/car_crash/models/'
-rl_gamma = 0.5
 
 image_shape = (224,224,3)
 frame_interval = 3
-terminal_weight = 1
 if_shuffle = True
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-dpath = '/vulcanscratch/ywen/car_crash/BeamNG_dataset'
+hostname = gethostname()
+if 'DESKTOP' in hostname:
+    model_save_path = '../'
+    dpath = 'D:/Beamng_research/recordings/Beamng_dataset_30fps'
+elif 'vulcan' in hostname:
+    model_save_path = '/vulcanscratch/ywen/car_crash/models/'
+    dpath = '/vulcanscratch/ywen/car_crash/BeamNG_dataset'
+else:
+    print("Unknown hostname")
+    exit()
+
+all_params = {'use_q_loss' : use_q_loss, 'network_type' : network_type,
+             'hidden_channels' : hidden_channels, 'num_layers' : num_layers,
+             'batch_size' : batch_size, 'learning_rate' : learning_rate,
+             'n_epochs' : n_epochs, rl_gamma : 'rl_gamma',
+             'terminal_weight' : terminal_weight}
+json_file = json.dumps(all_params)
+f = open(model_save_path + model_name + '.json', 'w')
+f.write(json_file)
+f.close()
+
 train_annotation = "train_annotation.txt"
 test_annotation = "test_annotation.txt"
 val_annotation = "val_annotation.txt"
@@ -87,9 +112,10 @@ class Model:
         self.network_type = network_type
         self.device = device
         self.rl_gamma = rl_gamma
-        self.prob_loss_func = nn.MSELoss()
+        self.prob_loss_func = nn.BCEWithLogitsLoss()
         self.network = CNNLSTM(network_type, hidden_channels,
                                num_layers, if_cnn_trainabel).cuda()
+        self.use_q_loss = use_q_loss
 
         if load_network_path != None:
             print('use pretrained model')
@@ -99,7 +125,7 @@ class Model:
             print('use', torch.cuda.device_count(), 'gpus')
             self.network = nn.DataParallel(self.network, device_ids=range(torch.cuda.device_count()))
 
-        if use_q_loss:
+        if self.use_q_loss:
             print('use q learning!')
             self.update_func = self.q_update
         else:
@@ -114,9 +140,19 @@ class Model:
 
     def q_update(self, x, y, weights, actual):
         q_current = self.network(x)
+
+        # mask q_current and y
+        weights_temp = torch.ones(weights.shape).cuda()
+        weights_temp[weights == 0] = 0
+        q_current = q_current * weights_temp
+        y = y * weights_temp
+
+        # shift q_current and mask q_future
         q_temp = q_current.detach().clone()
-        q_future = q_temp.detach().clone()
+        q_future = q_current.detach().clone()
         q_future[:, :-1] = q_temp[:, 1:]
+        q_future[:, -1] = 0
+
         q_future = self.rl_gamma * q_future + y
         loss = self.q_loss(q_current, q_future, weights)
         self.network.zero_grad()
@@ -129,6 +165,10 @@ class Model:
 
     def prob_update(self, x, y, weights, actual):
         predictions = self.network(x)
+        weights_temp = torch.ones(weights.shape).cuda()
+        weights_temp[weights == 0] = 0
+        predictions = predictions * weights_temp
+        actual[weights == 0] = 0
         loss = self.prob_loss(predictions, actual)
         self.network.zero_grad()
         loss.backward()
@@ -138,6 +178,10 @@ class Model:
     def no_grad_forward(self, x):
         with torch.no_grad():
             predictions = self.network(x)
+
+        if not self.use_q_loss:
+            predictions = torch.sigmoid(predictions)
+
         return predictions
 
     def update(self, x, y, weights, actual):
@@ -164,7 +208,6 @@ def train(model):
         train_loader = iter(train_dataset)
         print_ben = int(len(train_loader)/15)
 
-        print('Epoch:', epoch + 1)
         model.train()
         pbar = tqdm.tqdm(total=len(train_loader))
 
@@ -173,6 +216,7 @@ def train(model):
             q_current, loss = model.update(x, y, weights, actual)
 
             if i % print_ben == 0:
+                print('Epoch:', epoch + 1)
                 print('  iteration:' + str(i + 1) + ' loss:' + str(loss))
                 print((actual + 0.4)[:2])
                 print(q_current.detach().clone()[:2])
@@ -182,20 +226,24 @@ def train(model):
 
             pbar.update(1)
 
-        print('validating')
-        curr_loss = test(model, val_loader)
+        # print('validating')
+        # curr_loss = test(model, val_loader)
+        #
+        # if curr_loss < min_loss:
+        #     print('lower loss! current loss:', curr_loss)
+        #     min_loss = curr_loss
+        #     model.save(model_save_path + model_name + '_best_model.pth')
+        # else:
+        #     print('higher loss! current loss:', curr_loss)
+        #
+        # del curr_loss
 
-        if curr_loss < min_loss:
-            print('lower loss! current loss:', curr_loss)
-            min_loss = curr_loss
-            model.save(model_save_path + model_name + '_best_model.pth')
-        else:
-            print('higher loss! current loss:', curr_loss)
+        if epoch % 9 == 0 and epoch != 0:
+            model.save(model_save_path + model_name + '_' + str(epoch_start + epoch + 1)  + 'epoch_model.pth')
 
-        del curr_loss
         torch.cuda.empty_cache()
 
-    model.save(model_save_path + model_name + '_final_model.pth')
+    model.save(model_save_path + model_name + '_' + str(epoch_start + n_epochs) + 'epoch_model.pth')
 
 def test(model, data_loader):
     model.eval()
