@@ -120,7 +120,7 @@ class Model:
             else:
                 pass
 
-        predictions = torch.cat(predictions)
+        predictions = torch.cat(predictions) # (len(video)-window_size+1,)
         if not self.cfg.use_q_loss:
             predictions = torch.sigmoid(predictions)
 #        predictions = torch.Tensor(predictions)
