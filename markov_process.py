@@ -4,6 +4,9 @@ import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 
+import torchvision.datasets as dset
+import torchvision.transforms as transforms
+
 from old_code.video_loader import Zipindexables
 
 
@@ -156,6 +159,64 @@ def get_sequences(N, maxlen=20):
             labels.append(0)
 
     return sequences, np.array(labels), steplist, states, cumulatives, terminal_count / N
+
+
+mnist = dset.MNIST('/mnt/linuxshared/data/',
+                   transform = transforms.Compose([
+                       transforms.Resize(64),
+                       transforms.ToTensor()
+                       ]))
+
+def render_mnist_movie(steps, seq):
+    frames = []
+    digit, _ = mnist[np.random.choice(len(mnist))]
+    digit = (255.0*digit.numpy()).astype(np.uint8)
+    for x, y in zip(steps, seq):
+        new_x = int(((x+5)/35)*223 - 32)
+        new_y = int(223 - ((y+4)/11)*223 - 32)
+        canvas = np.empty((224,224), dtype=np.uint8)
+        canvas.fill(255)
+        canvas[4:220,4:220] = np.zeros((216,216),dtype=np.uint8)
+        canvas[new_y:new_y+64, new_x:new_x+64] = digit
+        frames.append(canvas)
+    return np.stack(frames)
+
+
+def get_mnist_sequences(N, maxlen=20):
+    terminal_count = 0
+    sequences = []
+    states = []
+    steplist = []
+    labels = []
+    cumulatives = []
+    for _ in range(N):
+        seq = get_sequence(maxlen)
+        steps, result, cumulative = render_sequence(seq, stepsize=0.1)
+        result += 0.3*np.random.randn(len(result))
+
+        # Now render result into MNIST
+        # 2 ways: linear and polar
+        # Image coords: X-axis [0,223], Y-axis [-60,163]
+        # Sequence coords: [0,25], [-3,6]
+        # [ (y-(-3))/(6-(-3)) ] * (163-(-60)) + (-60) # May want to go -4 to 7
+        # [ (x - 0)/(25-0) ] * (223-0) + 0 # May want to go -5 to 25 (or to 30)
+        # MNIST digits are 64 x 64 after resizing, so leave 32 padding (center vs. side)
+        # ( int(new_x_coord-32), int(new_y_coord-32) ) = top-left coord
+
+        sequences.append(result)
+        steplist.append(steps)
+        states.append(seq)
+        cumulatives.append(cumulative)
+
+        # Change this to only be 1 for certain digits
+        if seq[-1] == 5:
+            terminal_count += 1
+            labels.append(1)
+        else:
+            labels.append(0)
+
+    return sequences, np.array(labels), steplist, states, cumulatives, terminal_count / N
+
 
 
 #def process_sequences(seqs, labels, window_size=10):
@@ -442,7 +503,7 @@ def test_sequence_net(model_path='sequence_net.pth', device='cpu', threshold=0.5
 
 
 #train_sequence_net(5, terminal_weight=1, out_name = 'sequence_net_balanced.pth')
-test_sequence_net(model_path='sequence_net_balanced.pth', threshold=0.7)
+#test_sequence_net(model_path='sequence_net_balanced.pth', threshold=0.7)
 
 
 
@@ -457,6 +518,11 @@ test_sequence_net(model_path='sequence_net_balanced.pth', threshold=0.7)
 # Use terminal weights of 1, not 64, because mathematically this is sound (in terms of probabilistic interpretation)
 
 
+import imageio
+seq = get_sequence(maxlen=20)
+steps, result, _ = render_sequence(seq)
+movie = render_mnist_movie(steps, result)
+imageio.mimsave('mnist_out.mp4', movie, fps=10)
 
 
 
