@@ -671,26 +671,53 @@ def test_mnist_sequence_net(model_path='mnist_resnet18.pth', device='cuda:1', th
 
 
 
+
+
 # ****** NOTE *****
 # Use terminal weights of 1, not 64, because mathematically this is sound (in terms of probabilistic interpretation)
 
-'''
-import imageio
-seq = get_sequence(maxlen=20)
-steps, result, _ = render_sequence(seq)
-print(seq)
-movie, label = render_mnist_movie(steps, result, noise=0.05)
-print(label)
-print(type(movie), movie.shape)
-imageio.mimsave('mnist_out.mp4', movie, fps=10)
-'''
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--train_seq', action='store_true')
+    parser.add_argument('--test_seq', action='store_true')
+    parser.add_argument('--train_mnist_seq', action='store_true')
+    parser.add_argument('--test_mnist_seq', action='store_true')
+
+    parser.add_argument('--make_mnist_movie', action='store_true')
+    parser.add_argument('--movie_name', type=str, default='mnist_out.mp4')
+    parser.add_argument('--model_name', type=str, default='model.pth')
+    parser.add_argument('--threshold', type=float, default=0.9)
+    parser.add_argument('--device', type=str, default='cuda:0')
+    parser.add_argument('--nepochs', type=int, default=5)
+    parser.add_argument('--save_every', type=int, default=1)
+    opt = parser.parse_args()
+  
+
+    if opt.make_mnist_movie:
+        import imageio
+        seq = get_sequence(maxlen=20)
+        steps, result, _ = render_sequence(seq)
+        print(seq)
+        movie, label = render_mnist_movie(steps, result, noise=0.05)
+        print(label)
+        print(type(movie), movie.shape)
+        imageio.mimsave(opt.movie_name, movie, fps=10)
+
+    if opt.train_seq:
+        train_sequence_net(opt.nepochs, save_every=opt.save_every, out_name = opt.model_name)
+
+    if opt.test_seq:
+        test_sequence_net(model_path=opt.model_name, threshold=opt.threshold)
+
+    if opt.train_mnist_seq:
+        train_mnist_sequence_net(opt.nepochs, save_every=opt.save_every, out_name=opt.model_name)
+
+    if opt.test_mnist_seq:
+        test_mnist_sequence_net(model_path=opt.model_name, threshold=opt.threshold, device=opt.device)
 
 
-#train_sequence_net(5, terminal_weight=1, out_name = 'sequence_net_balanced.pth')
-#test_sequence_net(model_path='sequence_net_balanced.pth', threshold=0.9)
-
-#train_mnist_sequence_net(5, save_every=1, out_name='mnist_resnet18_noise_0_05.pth')
-test_mnist_sequence_net(model_path='mnist_resnet18_noise_0_05.pth', threshold=0.9, device='cuda:0')
 #test_mnist_sequence_net(model_path='mnist_resnet18.pth', threshold=0.9, device='cuda:0')
 
 
