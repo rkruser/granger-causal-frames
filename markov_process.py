@@ -8,6 +8,9 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 
 from old_code.video_loader import Zipindexables
+from flexible_resnet import resnet18_flexible
+
+import sys
 
 
 #     0       1     2      3      4      5      6   
@@ -167,55 +170,65 @@ mnist = dset.MNIST('/mnt/linuxshared/data/',
                        transforms.ToTensor()
                        ]))
 
-def render_mnist_movie(steps, seq):
+def render_mnist_movie(steps, seq, max_val=255, data_type=np.uint8, noise=0.1):
     frames = []
-    digit, _ = mnist[np.random.choice(len(mnist))]
-    digit = (255.0*digit.numpy()).astype(np.uint8)
+    digit, label = mnist[np.random.choice(len(mnist))]
+    #digit = (maxval*digit.numpy()).astype(data_type)
+    digit = digit.squeeze(0).numpy()
+    seq = np.clip(seq, -2.5, 5.5)
+#    print(seq)
+#    sys.exit()
     for x, y in zip(steps, seq):
         new_x = int(((x+5)/35)*223 - 32)
-        new_y = int(223 - ((y+4)/11)*223 - 32)
-        canvas = np.empty((224,224), dtype=np.uint8)
-        canvas.fill(255)
-        canvas[4:220,4:220] = np.zeros((216,216),dtype=np.uint8)
+        new_y = int(223 - ((y+5)/13)*223 - 32)
+        canvas = np.zeros((224,224))
+#        canvas.fill(1.0)
+#        canvas[4:220,4:220] = np.zeros((216,216))
         canvas[new_y:new_y+64, new_x:new_x+64] = digit
         frames.append(canvas)
-    return np.stack(frames)
+
+    frames = np.stack(frames)
+    if noise > 0:
+        frames += noise*2*(np.random.rand(*frames.shape)-0.5)
+
+    frames = (max_val*np.clip(frames, 0, 1)).astype(data_type)
+
+    return frames, label
 
 
-def get_mnist_sequences(N, maxlen=20):
+def get_mnist_sequences(N, maxlen=20, only_even_gets_reward=False, noise=0.4):
     terminal_count = 0
     sequences = []
     states = []
     steplist = []
     labels = []
+#    digit_labels = []
     cumulatives = []
-    for _ in range(N):
+    sequences_1d = []
+    for j in range(N):
+        print("Sequence", j, end='\r', flush=True)
         seq = get_sequence(maxlen)
         steps, result, cumulative = render_sequence(seq, stepsize=0.1)
         result += 0.3*np.random.randn(len(result))
+        frames, digit_label = render_mnist_movie(steps, result, noise=noise)
+#        frames = np.expand_dims(frames, axis=1)
 
-        # Now render result into MNIST
-        # 2 ways: linear and polar
-        # Image coords: X-axis [0,223], Y-axis [-60,163]
-        # Sequence coords: [0,25], [-3,6]
-        # [ (y-(-3))/(6-(-3)) ] * (163-(-60)) + (-60) # May want to go -4 to 7
-        # [ (x - 0)/(25-0) ] * (223-0) + 0 # May want to go -5 to 25 (or to 30)
-        # MNIST digits are 64 x 64 after resizing, so leave 32 padding (center vs. side)
-        # ( int(new_x_coord-32), int(new_y_coord-32) ) = top-left coord
-
-        sequences.append(result)
+        sequences.append(frames)
+        sequences_1d.append(result)
         steplist.append(steps)
         states.append(seq)
         cumulatives.append(cumulative)
+#        digit_labels.append(digit_label)
 
         # Change this to only be 1 for certain digits
         if seq[-1] == 5:
-            terminal_count += 1
-            labels.append(1)
+            keep = (digit_label%2 == 0) if only_even_gets_reward else True
+            terminal_count += 1*keep #yes you can multiply bools and numbers
+            labels.append(1*keep)
         else:
             labels.append(0)
 
-    return sequences, np.array(labels), steplist, states, cumulatives, terminal_count / N
+    return sequences, sequences_1d, np.array(labels), steplist, states, cumulatives, terminal_count / N
 
 
 
@@ -253,7 +266,10 @@ class SequenceWindow:
         return data, r, is_terminal
 
 class SequenceLoader(nn.Module):
-    def __init__(self, sequences, labels, steps, states, window_size=10, randomize=True, batch_size=128, return_transitions=True):
+    def __init__(self, sequences, labels, steps, states, 
+                window_size=10, randomize=True, 
+                batch_size=128, return_transitions=True,
+                post_transform=None):
         self.sequences = Zipindexables([SequenceWindow(sequences[i], labels[i], 
                                         window_size, return_transitions=return_transitions) for i in range(len(sequences))])
         self.labels = labels
@@ -264,6 +280,7 @@ class SequenceLoader(nn.Module):
         self.batch_size = batch_size
         self.randomize = randomize
         self.return_transitions = return_transitions
+        self.post_transform = post_transform
 
         self.indices = np.arange(len(self.sequences))
         self.position = 0
@@ -295,8 +312,12 @@ class SequenceLoader(nn.Module):
 
 
         data_batch = torch.from_numpy(np.stack(data_batch)).float()
+        
+        if self.post_transform is not None:
+            data_batch = self.post_transform(data_batch) #for example, divide by 255
+
         if self.return_transitions:
-            data_batch = data_batch.permute(1,0,2)
+            data_batch = data_batch.transpose(1,0)
 
         return data_batch, torch.Tensor(rewards), torch.BoolTensor(terminal)
 
@@ -343,7 +364,7 @@ class SequenceNet(nn.Module):
         return self.net(x)
 
 
-def train_sequence_net(n_epochs, save_every=5, device='cuda:0', rl_gamma=0.999, terminal_weight=64, out_name='seq_net.pth'):
+def train_sequence_net(n_epochs, save_every=5, device='cuda:0', rl_gamma=0.999, terminal_weight=1, out_name='seq_net.pth'):
     net = SequenceNet()
     optimizer = optim.Adam(net.parameters(), lr=0.001)
     train_sequences, train_labels, train_steps, train_states, _, train_proportion = get_sequences(10000)
@@ -394,6 +415,60 @@ def train_sequence_net(n_epochs, save_every=5, device='cuda:0', rl_gamma=0.999, 
         if (epoch+1)%save_every == 0 or epoch == n_epochs-1:
             print("Saving")
             torch.save(net.state_dict(), out_name)
+
+def train_mnist_sequence_net(n_epochs, save_every=5, device='cuda:0', rl_gamma=0.999, terminal_weight=1, out_name='seq_net.pth'):
+    net = resnet18_flexible(num_classes=1, data_channels=10)
+    optimizer = optim.Adam(net.parameters(), lr=0.0002)
+    train_sequences, _, train_labels, train_steps, train_states, _, train_proportion = get_mnist_sequences(1000, noise=0.05)
+#    test_sequences, test_labels, test_steps, test_states, test_proportion = get_sequences(1000)
+    train_loader = SequenceLoader(train_sequences, train_labels, train_steps, 
+                                   train_states, batch_size=64, post_transform=lambda x: x/255.0)
+#    test_loader = SequenceLoader(test_sequences, test_labels, test_steps, test_states, batch_size=128, randomize=False)
+
+
+    net = net.to(device)
+    net.train()
+    for epoch in range(n_epochs):
+        print("Epoch", epoch)
+        
+        total_loss = 0.0
+
+        for i,batch in enumerate(train_loader):
+            data, rewards, terminal = batch
+            data = data.to(device)
+            rewards = rewards.to(device)
+            terminal = terminal.to(device)
+
+            data_cur = data[0]
+            data_fut = data[1]
+
+            q_cur = net(data_cur).squeeze(1)
+            
+
+            weights = torch.ones(len(rewards), device=device)
+            with torch.no_grad():
+                weights[terminal] = terminal_weight
+                fut_preds = net(data_fut).squeeze(1)
+                fut_preds[terminal] = 0
+                q_future = rl_gamma*fut_preds+rewards
+
+            diffs = q_future-q_cur
+            loss = (weights*diffs**2).mean()
+
+            net.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+
+            if (i+1)%10 == 0:
+                print("Batch", i, "of", len(train_loader), "Average loss:", total_loss/i)
+
+
+        if (epoch+1)%save_every == 0 or epoch == n_epochs-1:
+            print("Saving")
+            torch.save(net.state_dict(), out_name)
+
 
 
 def get_prediction(steps, preds, threshold=0.5):
@@ -498,13 +573,95 @@ def test_sequence_net(model_path='sequence_net.pth', device='cpu', threshold=0.5
 #        plt.close(2)
 
 
+def test_mnist_sequence_net(model_path='mnist_resnet18.pth', device='cuda:1', threshold=0.9):
+    net = resnet18_flexible(num_classes=1, data_channels=10)
+    net.load_state_dict(torch.load(model_path, map_location=device))
+
+    test_sequences, test_sequences_1d, test_labels, test_steps, test_states, cumulatives, test_proportion = get_mnist_sequences(20, noise=0.05)
+#    train_sequences, train_labels, train_steps, train_states, _, train_proportion = get_mnist_sequences(1000)
+
+    test_loader = SequenceLoader(test_sequences, test_labels, test_steps, test_states, 
+                                batch_size=64, randomize=False, return_transitions=False, post_transform=lambda x: x/255.0)
+
+    print("Test proportion", test_proportion)
+
+    all_predictions = []
+    all_terminal = []
+    for i,batch in enumerate(test_loader):
+        if (i+1)%10 == 0:
+            print("Batch", i, "of", len(test_loader))
+        data, _, terminal = batch
+        predictions = net(data).detach().squeeze(1)
+        all_predictions.append(predictions)
+        all_terminal.append(terminal)
+
+    predictions = torch.cat(all_predictions)
+    terminal = torch.cat(all_terminal)
+
+    split_inds = torch.arange(len(terminal))[terminal]+1
+    
+    test_predictions = []
+    prev_low = 0
+    for ind in split_inds:
+        test_predictions.append(predictions[prev_low:ind])
+        prev_low = ind
+
+
+    assert(len(test_predictions) == len(test_sequences))
+    length_check = True
+    for s1, s2 in zip(test_sequences_1d,test_predictions):
+        if len(s2) != len(s1)-9:
+            length_check = False
+    assert(length_check)
+
+#    threshold = 0.5
+    predicted_times = np.zeros(len(test_sequences_1d))
+    stable_certain_times = np.zeros(len(test_sequences_1d))
+    true_pos = np.zeros(len(test_sequences_1d),dtype='bool')
+    for i in range(len(test_sequences_1d)):
+        pred = get_prediction(test_steps[i][9:], test_predictions[i], threshold=threshold)
+        if test_labels[i] and pred:
+            predicted_times[i] = pred
+            stable_certain_times[i] = cumulatives[i][-4]
+            true_pos[i] = True
+
+    get_stats(predicted_times, stable_certain_times, test_labels, true_pos)
+
+    for i in range(20):
+        plt.figure(1)
+        plt.ylim(-3, 6)
+        plt.plot(test_steps[i], test_sequences_1d[i], label='Sequence')
+#        plt.title("Sequence")
+
+#        plt.figure(2)
+#        plt.ylim(-0.5, 1.5)
+
+        predicted_time = get_prediction(test_steps[i][9:], test_predictions[i], threshold=threshold)
+        if predicted_time is not None:
+            plt.vlines(predicted_time, -3, 6, colors='b', label='Predicted')
+
+        if test_labels[i]:
+            at_least_70_percent = cumulatives[i][-6]
+            earliest_certain = cumulatives[i][-5]
+            stable_certain = cumulatives[i][-4]
+            true_lines = np.array([at_least_70_percent, earliest_certain, stable_certain])
+            plt.vlines(true_lines, -3, 6, linestyles='dashed', colors='r', label='Actual')
+
+        plt.plot(test_steps[i][9:], 5*test_predictions[i].numpy(), label='Predictions')
+
+        plt.legend()
+        plt.show()
+
+#        input("enter")
+
+        plt.close(1)
+#        plt.close(2)
 
 
 
 
 #train_sequence_net(5, terminal_weight=1, out_name = 'sequence_net_balanced.pth')
 #test_sequence_net(model_path='sequence_net_balanced.pth', threshold=0.7)
-
 
 
 # Idea: render the above sequences directly into numpy stuff
@@ -517,12 +674,24 @@ def test_sequence_net(model_path='sequence_net.pth', device='cpu', threshold=0.5
 # ****** NOTE *****
 # Use terminal weights of 1, not 64, because mathematically this is sound (in terms of probabilistic interpretation)
 
-
+'''
 import imageio
 seq = get_sequence(maxlen=20)
 steps, result, _ = render_sequence(seq)
-movie = render_mnist_movie(steps, result)
+print(seq)
+movie, label = render_mnist_movie(steps, result, noise=0.05)
+print(label)
+print(type(movie), movie.shape)
 imageio.mimsave('mnist_out.mp4', movie, fps=10)
+'''
+
+
+#train_sequence_net(5, terminal_weight=1, out_name = 'sequence_net_balanced.pth')
+#test_sequence_net(model_path='sequence_net_balanced.pth', threshold=0.9)
+
+#train_mnist_sequence_net(5, save_every=1, out_name='mnist_resnet18_noise_0_05.pth')
+test_mnist_sequence_net(model_path='mnist_resnet18_noise_0_05.pth', threshold=0.9, device='cuda:0')
+#test_mnist_sequence_net(model_path='mnist_resnet18.pth', threshold=0.9, device='cuda:0')
 
 
 
