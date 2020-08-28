@@ -7,6 +7,13 @@ import cv2
 from config import datadir #, trainvids, testvids
 #from video_loader import play_video
 
+# Load videos in parallel if possible
+from multiprocessing import Pool
+import time
+
+
+
+
 data_directory = '/mnt/linuxshared/data/BeamNG'
 label_file = 'full_annotation.txt'
 split_file = 'traintest_split.pkl'
@@ -106,7 +113,9 @@ class VideoFrameLoader:
                        frame_interval=5,
                        frames_per_point=3,
                        overlap_points=True,
-                       return_transitions=True
+                       return_transitions=True,
+                       parallel_processes=4, # Seems pretty good on my desktop
+                       randomize_start_frame=True
                        ):
 
 
@@ -117,6 +126,8 @@ class VideoFrameLoader:
         self.image_shape = image_shape
         self.frame_interval = frame_interval
         self.batch_size = batch_size
+        self.parallel_processes = parallel_processes
+        self.randomize_start_frame = randomize_start_frame
 
 #        assert(randomization_level == 0 or randomization_level == 1)
 #        self.loader = decord.VideoLoader(vid_list, 
@@ -191,7 +202,12 @@ class VideoFrameLoader:
             n_frames = len(reader)
 
             # Randomly choose an initial start point!
-            startframe = np.random.randint(3*self.frame_interval) #doesn't matter super much
+        # Randomly choose an initial start point!
+            if self.randomize_start_frame:
+                startframe = np.random.randint(self.frame_interval) #doesn't matter super much
+            else:
+                startframe = 0
+
             frames = reader.get_batch(np.arange(startframe, n_frames, self.frame_interval)) # randomly change start frame to increase effective data
             frames = frames.permute(0,3,1,2)
             self._preloaded.append(frames.numpy())
@@ -201,10 +217,56 @@ class VideoFrameLoader:
         self._preloaded_counters = np.zeros(len(self._preloaded),dtype=int)
 
 
+    def _load_single_video(self, video_file_name):
+        reader = decord.VideoReader(video_file_name, ctx=decord.cpu(0), width=self.image_shape[0], height=self.image_shape[1])
+        n_frames = len(reader)
+
+        # Randomly choose an initial start point!
+        if self.randomize_start_frame:
+            startframe = np.random.randint(self.frame_interval) #doesn't matter super much
+        else:
+            startframe = 0
+
+        frames = reader.get_batch(np.arange(startframe, n_frames, self.frame_interval)) # randomly change start frame to increase effective data
+        frames = frames.permute(0,3,1,2)
+        return frames.numpy()
+
+
+    def _preload_next_parallel(self):
+        print("Preloading", self.file_shuffle[self._file_pointer:self._file_pointer+self._preload_num])
+        if self._file_pointer == len(self.file_list):
+            self._reset()
+            raise StopIteration
+
+        self._preloaded = []
+        next_pointer = min(self._file_pointer + self._preload_num, len(self.file_list))
+        self._preloaded_indices = self.file_shuffle[self._file_pointer:next_pointer]
+        preloaded_names = [self.file_list[ind] for ind in self._preloaded_indices]
+        self._preloaded_labels = [self.label_list[i] for i in self._preloaded_indices]
+
+        with Pool(processes=self.parallel_processes) as pool:
+            self._preloaded = pool.map(self._load_single_video, preloaded_names)
+            self._file_pointer = next_pointer
+
+        self._preloaded_lengths = np.array([len(arr)-self.frames_per_point+1 for arr in self._preloaded],dtype=int)
+        self._preloaded_counters = np.zeros(len(self._preloaded),dtype=int)
+
+
+
     def _next_batch(self):
         remaining = self._preloaded_lengths - self._preloaded_counters
         if np.all(remaining == 0):
-            self._preload_next()
+#            time1 = time.time()
+
+            if self.parallel_processes > 1:
+#                print("Parallel preload")
+                self._preload_next_parallel()
+            else:
+#                print("Normal preload")
+                self._preload_next()
+
+#            time2 = time.time()
+#            print("Preload time:", time2-time1)
             remaining = self._preloaded_lengths - self._preloaded_counters
 
         mask = remaining>0
@@ -279,10 +341,15 @@ def get_label_data(data_directory = data_directory, label_file = label_file, spl
 
 
 def test_loader():
-    fullpaths, times, labels = get_label_data()
+    fullpaths, times, labels = get_label_data(split_file=None)
 
-    vidloader = VideoFrameLoader(fullpaths,labels,preload_num=50,shuffle_files=True, batch_size=256, frame_interval=5,
-                                 return_transitions=True)
+    vidloader = VideoFrameLoader(fullpaths,labels,
+                                preload_num=10,
+                                shuffle_files=True, 
+                                batch_size=256, 
+                                frame_interval=5,
+                                return_transitions=True,
+                                parallel_processes=4)
 
     for i, k in enumerate(vidloader):
         batch, labels, terminals, vid_inds = k
@@ -299,8 +366,14 @@ def test_loader():
 
 def test2():
     fullpaths, times, labels = get_label_data()
-    vidloader = VideoFrameLoader(fullpaths[:5],labels[:5],preload_num=2,shuffle_files=True, batch_size=64, frame_interval=3,
-                                 return_transitions=True)
+    vidloader = VideoFrameLoader(fullpaths[:5],labels[:5],
+                                preload_num=2,
+                                shuffle_files=True, 
+                                batch_size=64, 
+                                frame_interval=3,
+                                return_transitions=True,
+#                                parallel_processes=1
+                                )
 
 
     for i in range(vidloader.num_videos()):
@@ -309,8 +382,8 @@ def test2():
 
 
 if __name__=='__main__':
-#    test_loader()
-    test2()
+    test_loader()
+#    test2()
 
 
 
