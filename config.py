@@ -18,9 +18,9 @@ else:
 
 default_config_params = {
     # Training
-    'batch_size': 64,
+    'batch_size': 128,
     'n_epochs': 100,
-    'checkpoint_every': 5,
+    'checkpoint_every': 1,
     'train_print_every': 1, #currently unused
     'num_data_workers':4,
     'shuffle_train_data':True,
@@ -33,14 +33,15 @@ default_config_params = {
     'image_shape': (224,224,3),
     'rl_gamma': 0.999,
     'use_q_loss': True,
-    'terminal_weight':64, #weight of terminal states in loss
+    'terminal_weight':1, #weight of terminal states in loss
+    'use_data_parallel':True,
+    'randomize_start_frame':True,
 
     # Data preprocessing
     'frame_sample_freq': 3, #every 5th frame
     'overlap_datapoints': True,
     'frame_subtraction': False,
-    'preload_num':20,
-
+    'preload_num':50,
 
     # Optimizer
     'learning_rate': 0.0002,

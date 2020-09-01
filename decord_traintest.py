@@ -1,8 +1,9 @@
-import torch
+import torch 
 import pickle
 import os
 import numpy as np
 import argparse
+import torch.nn as nn
 
 from utils import AverageMeter, MeterBox, MetricBox, FolderTracker, VideoPredictions
 from utils import best_step_fit
@@ -12,6 +13,8 @@ from config import get_config #, trainvids, testvids
 
 # Add better_decord_loader imports
 from decord_loader import VideoFrameLoader, get_label_data
+
+import time
 
 
 # Later make this more flexible class Model:
@@ -34,6 +37,8 @@ class Model:
             raise ValueError("Unknown network_type option")
 
         self.device = cfg.device
+        if cfg.use_data_parallel:
+            self.network = nn.DataParallel(self.network)
         self.network = self.network.to(self.device)
 
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=cfg.learning_rate,
@@ -224,6 +229,7 @@ def train_and_test(model, train_dataset, test_dataset, cfg, args):
         meters.train_batch_loss.reset()
 
         # Iterate over dataset
+        time1 = time.time()
         for i, batch in enumerate(train_dataset):
             _, loss = model.update(batch) #Do backprop and optimization step
             batch_size = len(batch[0])
@@ -238,7 +244,8 @@ def train_and_test(model, train_dataset, test_dataset, cfg, args):
 
 #        metrics.summarized_train_batch_loss.append(meters.train_batch_loss.average())
         
-
+        time2 = time.time()
+        print("Epoch time:", time2-time1)
 
         # Every few epochs, save a checkpoint and run model on all train and test data
         if ( (epoch+1) % cfg.checkpoint_every == 0 ) or ( (epoch+1)==cfg.n_epochs ):
@@ -335,7 +342,9 @@ def construct_dataset_from_config(cfg, vidlist, label_list, shuffle_files=True):
                                frame_interval = cfg.frame_sample_freq,
                                frames_per_point = cfg.frames_per_datapoint,
                                overlap_points=cfg.overlap_datapoints,
-                               return_transitions=cfg.use_transitions
+                               return_transitions=cfg.use_transitions,
+                               parallel_processes=cfg.num_data_workers,
+                               randomize_start_frame=cfg.randomize_start_frame
                                )
 
     return dataset
@@ -430,26 +439,26 @@ def test_model(model_path, cfg, savename='results.pkl'):
 if __name__ == '__main__':
     default_model_dir = '/mnt/linuxshared/phd-research/better_causalFrames/models/model_on_new_dataset_08-09-2020-05:48:37/'
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--train', action='store_true')
-    parser.add_argument('--test', action='store_true')
-    parser.add_argument('--load_model_dir', type=str, default=default_model_dir)
+#    parser = argparse.ArgumentParser()
+#    parser.add_argument('--train', action='store_true')
+#    parser.add_argument('--test', action='store_true')
+#    parser.add_argument('--load_model_dir', type=str, default=default_model_dir)
 #    parser.add_argument('--load_model_num', type=int, default=-1)
-    parser.add_argument('--test_results_savename', type=str, default='results.pkl')
-    opt, _ = parser.parse_known_args()
+#    parser.add_argument('--test_results_savename', type=str, default='results.pkl')
+#    opt, _ = parser.parse_known_args()
     
 #    if opt.train:
-#    cfg_str = '--model_name ryen_sanity_check_model'
-#    train_standard(cfg_str)
-#    train_standard()
+#        cfg_str = '--model_name ryen_sanity_check_model'
+#        train_standard(cfg_str)
+    train_standard()
 
-    if opt.test:
-        print("in opt.test")
-        model_path = os.path.join(opt.load_model_dir, 'model.th')
-        config_path = os.path.join(opt.load_model_dir, 'config_info.pkl')
-        model_cfg, _ = pickle.load(open(config_path,'rb'))
-        update_cfg, _ = get_config(default_dict=model_cfg.__dict__)
-        test_model(model_path, update_cfg, savename=opt.test_results_savename)        
+#    if opt.test:
+#        print("in opt.test")
+#        model_path = os.path.join(opt.load_model_dir, 'model.th')
+#        config_path = os.path.join(opt.load_model_dir, 'config_info.pkl')
+#        model_cfg, _ = pickle.load(open(config_path,'rb'))
+#        update_cfg, _ = get_config(default_dict=model_cfg.__dict__)
+#        test_model(model_path, update_cfg, savename=opt.test_results_savename)        
 
 
 

@@ -36,6 +36,30 @@ transition_matrix = np.array([
   [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000 ]  # 7
 ])
 
+terminal_rows = np.array([False, False, False, False, False, True, False, False])
+terminal_values = np.array([1.0]) # Need to add another terminal state
+gamma = 0.999
+
+
+
+
+def analytical_values(M, gamma=0.999, terminal_rows, terminal_values):
+#    terminal_rows = (M.diagonal()==1)
+#    m_hat = M[~terminal_rows]
+    v_hat = np.dot(m_hat[:,terminal_rows], terminal_values) # or something; assume terminal state is first
+    m_hat = m_hat[:,~terminal_rows]
+    x_hat = np.linalg.solve(m_hat-(1.0/gamma)*np.eye(len(m_hat)), -v_hat)
+    x = np.empty(len(M))
+    x[~terminal_rows] = x_hat
+    x[terminal_rows] = terminal_values
+
+    return x
+    
+
+
+
+
+
 
 
 n_states = len(transition_matrix)
