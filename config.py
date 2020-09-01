@@ -5,11 +5,11 @@ import sys
 from socket import gethostname# as hostname
 hostname = gethostname()
 if 'LV426' in hostname:
-    datadir = '/mnt/linuxshared/phd-research/data/beamng_vids/all_vids'
+    datadir = '/mnt/linuxshared/data/BeamNG'
     modeldir = './models'
 elif 'vulcan' in hostname:
-    datadir = '/vulcan/scratch/krusinga/BeamNG/all_vids'
-    modeldir = '/vulcan/scratch/krusinga/BeamNG/models'
+    modeldir = '/cfarhomes/krusinga/storage/research/causality/granger-causal-frames/models'
+    datadir = '/vulcan/scratch/ywen/car_crash/BeamNG_dataset'
 else:
     print("Unknown hostname")
     datadir = './all_vids'

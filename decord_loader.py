@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 import os
 import cv2
-from config import datadir #, trainvids, testvids
+from config import datadir as data_directory #, trainvids, testvids
 #from video_loader import play_video
 
 # Load videos in parallel if possible
@@ -12,11 +12,8 @@ from multiprocessing import Pool
 import time
 
 
-
-
-data_directory = '/mnt/linuxshared/data/BeamNG'
-label_file = 'full_annotation.txt'
-split_file = 'traintest_split.pkl'
+label_file = './annotation/full_annotation.txt'
+split_file = './annotation/traintest_split.pkl'
 
 decord.bridge.set_bridge('torch') 
 
@@ -319,7 +316,9 @@ class VideoFrameLoader:
 
 
 def get_label_data(data_directory = data_directory, label_file = label_file, split_file=split_file):
-    with open(os.path.join(data_directory, label_file), 'r') as labfile:
+#    with open(os.path.join(data_directory, label_file), 'r') as labfile:
+    with open(os.path.join(label_file), 'r') as labfile:
+
         lines = labfile.readlines()
         split = [l.split() for l in lines]
 
@@ -329,7 +328,9 @@ def get_label_data(data_directory = data_directory, label_file = label_file, spl
         fullpaths, times, labels = zip(*annotations)
 
         if split_file:
-            train_inds, test_inds = pickle.load(open(os.path.join(data_directory,split_file),'rb'))
+#            train_inds, test_inds = pickle.load(open(os.path.join(data_directory,split_file),'rb'))
+            train_inds, test_inds = pickle.load(open(os.path.join(split_file),'rb'))
+       
             fullpaths, times, labels = np.array(fullpaths), np.array(times), np.array(labels)
             train_fullpaths, train_times, train_labels = fullpaths[train_inds], times[train_inds], labels[train_inds]
             test_fullpaths, test_times, test_labels = fullpaths[test_inds], times[test_inds], labels[test_inds]
