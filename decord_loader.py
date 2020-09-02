@@ -257,10 +257,14 @@ class VideoFrameLoader:
 
             if self.parallel_processes > 1:
 #                print("Parallel preload")
+                t1=time.time()
                 self._preload_next_parallel()
+                print("Preload time", time.time()-t1)
             else:
 #                print("Normal preload")
+                t1 = time.time()
                 self._preload_next()
+                print("Preload time", time.time()-t1)
 
 #            time2 = time.time()
 #            print("Preload time:", time2-time1)

@@ -5,6 +5,8 @@
 #SBATCH --job-name=trainbm
 #SBATCH --qos=high
 #SBATCH --mem=32gb
+###SBATCH -c 10  ### Use this to ask for a certain number of cores? (cpuspertask)
+###SBATCH -n 10  ### number of multiprocessing tasks? (ntasks)
 ###SBATCH --account scavenger
 ###SBATCH --partition scavenger
 #SBATCH --gres=gpu:4 ### gpu:p6000:1
