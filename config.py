@@ -9,7 +9,8 @@ if 'LV426' in hostname:
     modeldir = './models'
 elif 'vulcan' in hostname:
     modeldir = '/cfarhomes/krusinga/storage/research/causality/granger-causal-frames/models'
-    datadir = '/vulcan/scratch/ywen/car_crash/BeamNG_dataset'
+#    datadir = '/vulcan/scratch/ywen/car_crash/BeamNG_dataset'
+    datadir = '/scratch0/krusinga/BeamNG_dataset'
 else:
     print("Unknown hostname")
     datadir = './all_vids'
