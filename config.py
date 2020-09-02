@@ -58,7 +58,7 @@ default_config_params = {
     'data_directory': datadir,
     'device':'cuda:0',
     'random_seed': 53,
-    'overwrite_last': False
+    'overwrite_last': True
 }
 
 # Items can repeat here

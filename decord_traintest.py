@@ -238,6 +238,9 @@ def train_and_test(model, train_dataset, test_dataset, cfg, args):
             if i%10 == 0:
                 print("  batch {0}, loss {1}".format(i,meters.train_batch_loss.average()))
 
+            if i==30: # for testing
+              break
+
 #            metrics.all_train_batch_loss.append(loss)
 
         print("Epoch average loss", meters.train_batch_loss.average())
