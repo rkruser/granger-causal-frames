@@ -1,16 +1,30 @@
 # All config parameters go here with their default values
 import argparse
 import sys
+import os
 
 from socket import gethostname# as hostname
 hostname = gethostname()
 if 'LV426' in hostname:
     datadir = '/mnt/linuxshared/data/BeamNG'
     modeldir = './models'
+    label_file = os.path.join(datadir, 'full_annotation.txt')
+    split_file = os.path.join(datadir, 'traintest_split.pkl')
 elif 'vulcan' in hostname:
     modeldir = '/cfarhomes/krusinga/storage/research/causality/granger-causal-frames/models'
 #    datadir = '/vulcan/scratch/ywen/car_crash/BeamNG_dataset'
     datadir = '/scratch0/krusinga/BeamNG_dataset'
+    label_file = './annotation/full_annotation.txt'
+    split_file = './annotation/traintest_split.pkl'
+
+elif 'jacobswks20' in hostname:
+    modeldir = './models'
+    datadir = '/scratch0/datasets/BeamNG_dataset'
+    label_file = './annotation/full_annotation.txt'
+    split_file = './annotation/traintest_split.pkl'
+#    label_file = os.path.join(datadir, 'full_annotation.txt')
+#    split_file = os.path.join(datadir, 'traintest_split.pkl')
+
 else:
     print("Unknown hostname")
     datadir = './all_vids'
