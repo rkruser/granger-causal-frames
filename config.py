@@ -34,7 +34,7 @@ else:
 default_config_params = {
     # Training
     'batch_size': 128,
-    'n_epochs': 100,
+    'n_epochs': 50,
     'checkpoint_every': 1,
     'train_print_every': 1, #currently unused
     'num_data_workers':4,
@@ -46,7 +46,7 @@ default_config_params = {
     'use_transitions': True,
     'use_color': True,
     'image_shape': (224,224,3),
-    'rl_gamma': 0.999,
+    'rl_gamma': 0.977, #Chosen to yield 0.5 discount 3 seconds into the past
     'use_q_loss': True,
     'terminal_weight':1, #weight of terminal states in loss
     'use_data_parallel':True,
@@ -67,7 +67,7 @@ default_config_params = {
     'amsgrad':False,
 
     # General
-    'model_name': 'model',
+    'model_name': 'model_terminal_1_gamma_977',
     'model_directory': modeldir,
     'model_checkpoint_number': -1,
     'data_directory': datadir,
