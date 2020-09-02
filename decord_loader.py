@@ -12,8 +12,9 @@ from multiprocessing import Pool
 import time
 
 
-label_file = './annotation/full_annotation.txt'
-split_file = './annotation/traintest_split.pkl'
+#label_file = './annotation/full_annotation.txt'
+#split_file = './annotation/traintest_split.pkl'
+from config import label_file, split_file
 
 decord.bridge.set_bridge('torch') 
 
