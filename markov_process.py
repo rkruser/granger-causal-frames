@@ -25,27 +25,44 @@ import sys
 #])
 
 #     0       1     2      3      4      5      6      7
+#transition_matrix = np.array([
+#  [ 0.334, 0.333, 0.000, 0.000, 0.000, 0.000, 0.333, 0.000 ], # 0
+#  [ 0.500, 0.000, 0.500, 0.000, 0.000, 0.000, 0.000, 0.000 ], # 1
+#  [ 0.000, 0.500, 0.000, 0.500, 0.000, 0.000, 0.000, 0.000 ], # 2
+#  [ 0.000, 0.000, 0.300, 0.000, 0.700, 0.000, 0.000, 0.000 ], # 3
+#  [ 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000 ], # 4
+#  [ 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000 ], # 5
+#  [ 0.500, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.500 ], # 6
+#  [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000 ]  # 7
+#])
+
+
+tp = 0.05
+#     0       1     2      3      4      5      6      7      8      9
 transition_matrix = np.array([
-  [ 0.334, 0.333, 0.000, 0.000, 0.000, 0.000, 0.333, 0.000 ], # 0
-  [ 0.500, 0.000, 0.500, 0.000, 0.000, 0.000, 0.000, 0.000 ], # 1
-  [ 0.000, 0.500, 0.000, 0.500, 0.000, 0.000, 0.000, 0.000 ], # 2
-  [ 0.000, 0.000, 0.300, 0.000, 0.700, 0.000, 0.000, 0.000 ], # 3
-  [ 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000 ], # 4
-  [ 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000 ], # 5
-  [ 0.500, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.500 ],  # 6
-  [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000 ]  # 7
+  [ 0.334, 0.333, 0.000, 0.000, 0.000, 0.000, 0.333, 0.000, 0.000, 0.000 ], # 0
+  [ 0.500-tp/2, 0.000, 0.500-tp/2, 0.000, 0.000, 0.000, 0.000, 0.000, tp,      0.000 ], # 1
+  [ 0.000, 0.500-tp/2, 0.000, 0.500-tp/2, 0.000, 0.000, 0.000, 0.000, tp,      0.000 ], # 2
+  [ 0.000, 0.000, 0.300-tp/2, 0.000, 0.700-tp/2, 0.000, 0.000, 0.000, tp,      0.000 ], # 3
+  [ 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000,             0.000 ], # 4
+  [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,             1.000 ], # 5 (to terminal 1)
+  [ 0.500-tp/2, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.500-tp/2, tp,      0.000 ], # 6
+  [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000-tp, 0.000, tp,             0.000 ],  # 7
+  [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000,             0.000 ],  # Terminal zero
+  [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,             1.000 ]  # Terminal one
 ])
 
-terminal_rows = np.array([False, False, False, False, False, True, False, False])
-terminal_values = np.array([1.0]) # Need to add another terminal state
-gamma = 0.999
+
+#terminal_rows = np.array([False, False, False, False, False, False, False, False, True, True])
+terminal_rows = np.abs(transition_matrix.diagonal()-1) < 1e-8
+terminal_values = np.array([0.0, 1.0])
+#gamma = 0.999
+gamma = 0.977
 
 
-
-
-def analytical_values(M, gamma=0.999, terminal_rows, terminal_values):
+def analytical_values(M, gamma, terminal_rows, terminal_values):
 #    terminal_rows = (M.diagonal()==1)
-#    m_hat = M[~terminal_rows]
+    m_hat = M[~terminal_rows]
     v_hat = np.dot(m_hat[:,terminal_rows], terminal_values) # or something; assume terminal state is first
     m_hat = m_hat[:,~terminal_rows]
     x_hat = np.linalg.solve(m_hat-(1.0/gamma)*np.eye(len(m_hat)), -v_hat)
@@ -56,8 +73,9 @@ def analytical_values(M, gamma=0.999, terminal_rows, terminal_values):
     return x
     
 
-
-
+# terminal Need to add terminal transition and re-tune markov chain
+# Retrain markov chain model
+# Add graphing of analytical values
 
 
 
@@ -66,42 +84,37 @@ n_states = len(transition_matrix)
 #print(n_states)
 #print(len(transition_matrix[0]))
 
+
+# Altered to not use max length
 def get_sequence(maxlen = 10):
     state = 0
     index = 0
     states = [state]
-    while (state != 4) and index <= maxlen:
+    while (state <= 7): # and index <= maxlen:
         state = np.random.choice(n_states, p=transition_matrix[state])
         states.append(state)
         index += 1
 
-#    if states[-1] == 3:
-#        states.append(4)
-    if states[-1] == 4: # Alternative transition matrix
-        states.append(5)
-
-
     return np.array(states)
 
-
-#state_data_default = np.array([ 0, 1, 2, 3, 4, -1, -2 ])
+# non-terminal states
 state_data_default = np.array([ 0, 1, 2, 3, 4, 5, -1, -2 ])
 omega_default = 2*np.pi*4*np.sqrt(2)
 amplitude = 0.25
 
 def render_sequence(seq, stepsize=0.1):
-    durations = 0.5 + 0.5*np.random.rand(2*len(seq))
-    durations[np.arange(2,2*len(seq),2)] *= 0.25
+    durations = 0.5 + 0.5*np.random.rand(2*(len(seq)-1)) # len(seq)-1 to get rid of terminal endpoint
+    durations[np.arange(2,2*(len(seq)-1),2)] *= 0.25
     durations[0] = 0
     cumulative = np.cumsum(durations)
     total = cumulative[-1]
     steps = np.linspace(0, total, num = total/stepsize + 1)
 
     slices = []
-    for i, state in enumerate(seq):
+    for i, state in enumerate(seq[:-1]):
         state_data = state_data_default + 0.1*np.random.randn(len(state_data_default))
         omega = omega_default + 0.5*np.random.randn()
-        terminal = (i == len(seq)-1)
+        terminal = (i == len(seq)-2) # don't include very last state
         start_state = cumulative[2*i]
         stop_state = cumulative[2*i+1]
         if terminal:
@@ -120,9 +133,11 @@ def render_sequence(seq, stepsize=0.1):
         # Also, account for case where next state is current state
 
         offset = state_data[state]
-        state_func = lambda x : offset + amplitude*np.sin(omega*(x-start_state))
-        state_masked_func_applied = state_func(state_masked)
-        slices.append( state_masked_func_applied )       
+#        state_func = lambda x : offset + amplitude*np.sin(omega*(x-start_state))
+#        state_masked_func_applied = state_func(state_masked)
+#        slices.append( state_masked_func_applied )       
+        state_masked_func_applied = offset + amplitude*np.sin(omega*(state_masked-start_state))
+        slices.append(state_masked_func_applied)
 
 #        if next_state == state:
 #            slices.append( state_func(lin_masked) )
@@ -164,7 +179,7 @@ def render_sequence(seq, stepsize=0.1):
 
 
 def get_sequences(N, maxlen=20):
-    terminal_count = 0
+    ones_count = 0
     sequences = []
     states = []
     steplist = []
@@ -179,13 +194,13 @@ def get_sequences(N, maxlen=20):
         states.append(seq)
         cumulatives.append(cumulative)
 
-        if seq[-1] == 5:
-            terminal_count += 1
+        if seq[-1] == 9:
+            ones_count += 1
             labels.append(1)
         else:
             labels.append(0)
 
-    return sequences, np.array(labels), steplist, states, cumulatives, terminal_count / N
+    return sequences, np.array(labels), steplist, states, cumulatives, ones_count / N
 
 
 mnist = dset.MNIST('/mnt/linuxshared/data/',
@@ -221,7 +236,7 @@ def render_mnist_movie(steps, seq, max_val=255, data_type=np.uint8, noise=0.1):
 
 
 def get_mnist_sequences(N, maxlen=20, only_even_gets_reward=False, noise=0.4):
-    terminal_count = 0
+    crash_count = 0
     sequences = []
     states = []
     steplist = []
@@ -245,14 +260,14 @@ def get_mnist_sequences(N, maxlen=20, only_even_gets_reward=False, noise=0.4):
 #        digit_labels.append(digit_label)
 
         # Change this to only be 1 for certain digits
-        if seq[-1] == 5:
+        if seq[-1] == 9:
             keep = (digit_label%2 == 0) if only_even_gets_reward else True
-            terminal_count += 1*keep #yes you can multiply bools and numbers
+            crash_count += 1*keep #yes you can multiply bools and numbers
             labels.append(1*keep)
         else:
             labels.append(0)
 
-    return sequences, sequences_1d, np.array(labels), steplist, states, cumulatives, terminal_count / N
+    return sequences, sequences_1d, np.array(labels), steplist, states, cumulatives, crash_count / N
 
 
 
@@ -391,7 +406,7 @@ class SequenceNet(nn.Module):
 def train_sequence_net(n_epochs, save_every=5, device='cuda:0', rl_gamma=0.999, terminal_weight=1, out_name='seq_net.pth'):
     net = SequenceNet()
     optimizer = optim.Adam(net.parameters(), lr=0.001)
-    train_sequences, train_labels, train_steps, train_states, _, train_proportion = get_sequences(10000)
+    train_sequences, train_labels, train_steps, train_states, _, train_proportion = get_sequences(2000)
 #    test_sequences, test_labels, test_steps, test_states, test_proportion = get_sequences(1000)
     train_loader = SequenceLoader(train_sequences, train_labels, train_steps, train_states, batch_size=128)
 #    test_loader = SequenceLoader(test_sequences, test_labels, test_steps, test_states, batch_size=128, randomize=False)
@@ -708,6 +723,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_seq', action='store_true')
     parser.add_argument('--train_mnist_seq', action='store_true')
     parser.add_argument('--test_mnist_seq', action='store_true')
+    parser.add_argument('--test_program', action='store_true')
 
     parser.add_argument('--make_mnist_movie', action='store_true')
     parser.add_argument('--movie_name', type=str, default='mnist_out.mp4')
@@ -716,6 +732,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--nepochs', type=int, default=5)
     parser.add_argument('--save_every', type=int, default=1)
+    parser.add_argument('--gamma', type=float, default=0.999)
     opt = parser.parse_args()
   
 
@@ -729,14 +746,18 @@ if __name__ == '__main__':
         print(type(movie), movie.shape)
         imageio.mimsave(opt.movie_name, movie, fps=10)
 
+    if opt.test_program:
+        seqs, labels, steps, states, cumulatives, p = get_sequences(100)
+        print(p)
+
     if opt.train_seq:
-        train_sequence_net(opt.nepochs, save_every=opt.save_every, out_name = opt.model_name)
+        train_sequence_net(opt.nepochs, rl_gamma=opt.gamma, save_every=opt.save_every, out_name = opt.model_name)
 
     if opt.test_seq:
         test_sequence_net(model_path=opt.model_name, threshold=opt.threshold)
 
     if opt.train_mnist_seq:
-        train_mnist_sequence_net(opt.nepochs, save_every=opt.save_every, out_name=opt.model_name)
+        train_mnist_sequence_net(opt.nepochs, rl_gamma=opt.gamma, save_every=opt.save_every, out_name=opt.model_name)
 
     if opt.test_mnist_seq:
         test_mnist_sequence_net(model_path=opt.model_name, threshold=opt.threshold, device=opt.device)
