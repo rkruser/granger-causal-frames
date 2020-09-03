@@ -11,6 +11,7 @@ from old_code.video_loader import Zipindexables
 from flexible_resnet import resnet18_flexible
 
 import sys
+import imageio
 
 
 #     0       1     2      3      4      5      6   
@@ -178,7 +179,7 @@ def render_sequence(seq, stepsize=0.1):
 #    return terminal_count / N
 
 
-def get_sequences(N, maxlen=20):
+def get_sequences(N, maxlen=20, noise_coeff=0.3):
     ones_count = 0
     sequences = []
     states = []
@@ -188,7 +189,7 @@ def get_sequences(N, maxlen=20):
     for _ in range(N):
         seq = get_sequence(maxlen)
         steps, result, cumulative = render_sequence(seq, stepsize=0.1)
-        result += 0.3*np.random.randn(len(result))
+        result += noise_coeff*np.random.randn(len(result))
         sequences.append(result)
         steplist.append(steps)
         states.append(seq)
@@ -217,8 +218,19 @@ def render_mnist_movie(steps, seq, max_val=255, data_type=np.uint8, noise=0.1):
     seq = np.clip(seq, -2.5, 5.5)
 #    print(seq)
 #    sys.exit()
+#    inversion = False
+#    lower = (5/25)*223-32
     for x, y in zip(steps, seq):
-        new_x = int(((x+5)/35)*223 - 32)
+        new_x = int((x/10)*223)
+        remainder = new_x % 160
+        quotient = new_x // 160
+        new_x = 160-remainder if quotient%2 == 1 else remainder
+#        if new_x < lower or new_x > 150:
+#            inversion = (not inversion)
+#        new_x = int(new_x) # Do this afterward to prevent multiple inversion
+
+
+
         new_y = int(223 - ((y+5)/13)*223 - 32)
         canvas = np.zeros((224,224))
 #        canvas.fill(1.0)
@@ -235,7 +247,7 @@ def render_mnist_movie(steps, seq, max_val=255, data_type=np.uint8, noise=0.1):
     return frames, label
 
 
-def get_mnist_sequences(N, maxlen=20, only_even_gets_reward=False, noise=0.4):
+def get_mnist_sequences(N, maxlen=20, only_even_gets_reward=False, noise=0.4, seq_noise = 0.3):
     crash_count = 0
     sequences = []
     states = []
@@ -248,7 +260,7 @@ def get_mnist_sequences(N, maxlen=20, only_even_gets_reward=False, noise=0.4):
         print("Sequence", j, end='\r', flush=True)
         seq = get_sequence(maxlen)
         steps, result, cumulative = render_sequence(seq, stepsize=0.1)
-        result += 0.3*np.random.randn(len(result))
+        result += seq_noise*np.random.randn(len(result))
         frames, digit_label = render_mnist_movie(steps, result, noise=noise)
 #        frames = np.expand_dims(frames, axis=1)
 
@@ -455,10 +467,14 @@ def train_sequence_net(n_epochs, save_every=5, device='cuda:0', rl_gamma=0.999, 
             print("Saving")
             torch.save(net.state_dict(), out_name)
 
-def train_mnist_sequence_net(n_epochs, save_every=5, device='cuda:0', rl_gamma=0.999, terminal_weight=1, out_name='seq_net.pth'):
+def train_mnist_sequence_net(n_epochs, save_every=1, device='cuda:0', rl_gamma=0.999, terminal_weight=1, out_name='seq_net.pth', only_even=False):
     net = resnet18_flexible(num_classes=1, data_channels=10)
     optimizer = optim.Adam(net.parameters(), lr=0.0002)
-    train_sequences, _, train_labels, train_steps, train_states, _, train_proportion = get_mnist_sequences(1000, noise=0.05)
+    train_sequences, _, train_labels, train_steps, train_states, _, train_proportion = get_mnist_sequences(500, noise=0.05, seq_noise=0.1, only_even_gets_reward = only_even)
+
+    if only_even:
+        print("Only even rewards")
+
 #    test_sequences, test_labels, test_steps, test_states, test_proportion = get_sequences(1000)
     train_loader = SequenceLoader(train_sequences, train_labels, train_steps, 
                                    train_states, batch_size=64, post_transform=lambda x: x/255.0)
@@ -529,9 +545,24 @@ def get_stats(predicted, actual, labels, true_pos):
     print("Magnitudes", np.abs(diffs).mean())
     
 
-def test_sequence_net(model_path='sequence_net.pth', device='cpu', threshold=0.5):
+def get_true_plot(states, steps, cumulatives, analytical_vals):
+    true_seq = np.zeros(len(steps))
+    for i, t in enumerate(cumulatives[:-1]):
+        window = (steps >= cumulatives[i]) & (steps < cumulatives[i+1])
+        state_index = i//2
+        val = analytical_vals[states[state_index]]
+        true_seq[window] = val
+
+    return true_seq
+
+
+
+def test_sequence_net(model_path='sequence_net.pth', device='cpu', threshold=0.5, gamma=0.977):
     net = SequenceNet()
     net.load_state_dict(torch.load(model_path, map_location=device))
+
+    analytical_vals = analytical_values(transition_matrix, gamma, terminal_rows, terminal_values)
+
 
     test_sequences, test_labels, test_steps, test_states, cumulatives, test_proportion = get_sequences(1000)
     test_loader = SequenceLoader(test_sequences, test_labels, test_steps, test_states, 
@@ -579,6 +610,7 @@ def test_sequence_net(model_path='sequence_net.pth', device='cpu', threshold=0.5
             stable_certain_times[i] = cumulatives[i][-4]
             true_pos[i] = True
 
+
     get_stats(predicted_times, stable_certain_times, test_labels, true_pos)
 
     for i in range(20):
@@ -589,6 +621,10 @@ def test_sequence_net(model_path='sequence_net.pth', device='cpu', threshold=0.5
 
 #        plt.figure(2)
 #        plt.ylim(-0.5, 1.5)
+
+
+        true_vals = get_true_plot(test_states[i], test_steps[i], cumulatives[i], analytical_vals)
+        plt.plot(test_steps[i], 5*true_vals, label='Analytical values')
 
         predicted_time = get_prediction(test_steps[i][9:], test_predictions[i], threshold=threshold)
         if predicted_time is not None:
@@ -612,11 +648,18 @@ def test_sequence_net(model_path='sequence_net.pth', device='cpu', threshold=0.5
 #        plt.close(2)
 
 
-def test_mnist_sequence_net(model_path='mnist_resnet18.pth', device='cuda:1', threshold=0.9):
+def test_mnist_sequence_net(model_path='mnist_resnet18.pth', device='cuda:0', threshold=0.9, only_even=False, gamma=0.977):
     net = resnet18_flexible(num_classes=1, data_channels=10)
     net.load_state_dict(torch.load(model_path, map_location=device))
 
-    test_sequences, test_sequences_1d, test_labels, test_steps, test_states, cumulatives, test_proportion = get_mnist_sequences(20, noise=0.05)
+    analytical_vals = analytical_values(transition_matrix, gamma, terminal_rows, terminal_values)
+
+
+    test_sequences, test_sequences_1d, test_labels, test_steps, test_states, cumulatives, test_proportion = get_mnist_sequences(20, noise=0.05, seq_noise=0.1, only_even_gets_reward=only_even)
+
+    if only_even:
+        print("Only even rewards")
+
 #    train_sequences, train_labels, train_steps, train_states, _, train_proportion = get_mnist_sequences(1000)
 
     test_loader = SequenceLoader(test_sequences, test_labels, test_steps, test_states, 
@@ -669,8 +712,15 @@ def test_mnist_sequence_net(model_path='mnist_resnet18.pth', device='cuda:1', th
     for i in range(20):
         plt.figure(1)
         plt.ylim(-3, 6)
+        imageio.mimsave('test_movie.mp4', test_sequences[i], fps=10)
+        plt.title("Label: {}".format(test_labels[i]))
+
         plt.plot(test_steps[i], test_sequences_1d[i], label='Sequence')
 #        plt.title("Sequence")
+
+        true_vals = get_true_plot(test_states[i], test_steps[i], cumulatives[i], analytical_vals)
+        plt.plot(test_steps[i], 5*true_vals, label='Analytical values')
+
 
 #        plt.figure(2)
 #        plt.ylim(-0.5, 1.5)
@@ -724,6 +774,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_mnist_seq', action='store_true')
     parser.add_argument('--test_mnist_seq', action='store_true')
     parser.add_argument('--test_program', action='store_true')
+    parser.add_argument('--terminal_values', action='store_true')
 
     parser.add_argument('--make_mnist_movie', action='store_true')
     parser.add_argument('--movie_name', type=str, default='mnist_out.mp4')
@@ -732,16 +783,19 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--nepochs', type=int, default=5)
     parser.add_argument('--save_every', type=int, default=1)
-    parser.add_argument('--gamma', type=float, default=0.999)
+    parser.add_argument('--gamma', type=float, default=0.977)
+    parser.add_argument('--only_even', action='store_true')
     opt = parser.parse_args()
   
 
     if opt.make_mnist_movie:
         import imageio
-        seq = get_sequence(maxlen=20)
+        seq = get_sequence()
+        while len(seq) < 50:
+            seq = get_sequence()
         steps, result, _ = render_sequence(seq)
         print(seq)
-        movie, label = render_mnist_movie(steps, result, noise=0.05)
+        movie, label = render_mnist_movie(steps, result, noise=0.2)
         print(label)
         print(type(movie), movie.shape)
         imageio.mimsave(opt.movie_name, movie, fps=10)
@@ -754,13 +808,18 @@ if __name__ == '__main__':
         train_sequence_net(opt.nepochs, rl_gamma=opt.gamma, save_every=opt.save_every, out_name = opt.model_name)
 
     if opt.test_seq:
-        test_sequence_net(model_path=opt.model_name, threshold=opt.threshold)
+        test_sequence_net(model_path=opt.model_name, threshold=opt.threshold, gamma=opt.gamma)
 
     if opt.train_mnist_seq:
-        train_mnist_sequence_net(opt.nepochs, rl_gamma=opt.gamma, save_every=opt.save_every, out_name=opt.model_name)
+        train_mnist_sequence_net(opt.nepochs, rl_gamma=opt.gamma, device=opt.device, save_every=opt.save_every, 
+                                out_name=opt.model_name, only_even=opt.only_even)
+
+    if opt.terminal_values:
+        vals = analytical_values(transition_matrix, opt.gamma, terminal_rows, terminal_values)
+        print(vals)
 
     if opt.test_mnist_seq:
-        test_mnist_sequence_net(model_path=opt.model_name, threshold=opt.threshold, device=opt.device)
+        test_mnist_sequence_net(model_path=opt.model_name, threshold=opt.threshold, device=opt.device, only_even=opt.only_even, gamma=opt.gamma)
 
 
 #test_mnist_sequence_net(model_path='mnist_resnet18.pth', threshold=0.9, device='cuda:0')
