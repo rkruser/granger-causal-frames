@@ -467,10 +467,16 @@ def train_sequence_net(n_epochs, save_every=5, device='cuda:0', rl_gamma=0.999, 
             print("Saving")
             torch.save(net.state_dict(), out_name)
 
-def train_mnist_sequence_net(n_epochs, save_every=1, device='cuda:0', rl_gamma=0.999, terminal_weight=1, out_name='seq_net.pth', only_even=False):
+def train_mnist_sequence_net(n_epochs, save_every=1, device='cuda:0', rl_gamma=0.999, terminal_weight=1, out_name='seq_net.pth', load_from=None, only_even=False, sequence_noise=0.1, image_noise=0.05):
     net = resnet18_flexible(num_classes=1, data_channels=10)
+    net = net.to(device)
     optimizer = optim.Adam(net.parameters(), lr=0.0002)
-    train_sequences, _, train_labels, train_steps, train_states, _, train_proportion = get_mnist_sequences(500, noise=0.05, seq_noise=0.1, only_even_gets_reward = only_even)
+
+    if load_from is not None:
+        print("loading from {}".format(load_from))
+        net.load_state_dict(torch.load(load_from, map_location=device))
+
+    train_sequences, _, train_labels, train_steps, train_states, _, train_proportion = get_mnist_sequences(500, noise=image_noise, seq_noise=sequence_noise, only_even_gets_reward = only_even)
 
     if only_even:
         print("Only even rewards")
@@ -481,7 +487,6 @@ def train_mnist_sequence_net(n_epochs, save_every=1, device='cuda:0', rl_gamma=0
 #    test_loader = SequenceLoader(test_sequences, test_labels, test_steps, test_states, batch_size=128, randomize=False)
 
 
-    net = net.to(device)
     net.train()
     for epoch in range(n_epochs):
         print("Epoch", epoch)
@@ -785,6 +790,10 @@ if __name__ == '__main__':
     parser.add_argument('--save_every', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.977)
     parser.add_argument('--only_even', action='store_true')
+    parser.add_argument('--seq_noise', type=float, default=0.1)
+    parser.add_argument('--image_noise', type=float, default=0.05)
+    parser.add_argument('--load_from', type=str, default=None)
+
     opt = parser.parse_args()
   
 
@@ -811,8 +820,13 @@ if __name__ == '__main__':
         test_sequence_net(model_path=opt.model_name, threshold=opt.threshold, gamma=opt.gamma)
 
     if opt.train_mnist_seq:
-        train_mnist_sequence_net(opt.nepochs, rl_gamma=opt.gamma, device=opt.device, save_every=opt.save_every, 
-                                out_name=opt.model_name, only_even=opt.only_even)
+        train_mnist_sequence_net(opt.nepochs, rl_gamma=opt.gamma, device=opt.device, 
+                                save_every=opt.save_every, 
+                                out_name=opt.model_name, 
+                                load_from=opt.load_from,
+                                only_even=opt.only_even,
+                                image_noise=opt.image_noise,
+                                sequence_noise=opt.seq_noise)
 
     if opt.terminal_values:
         vals = analytical_values(transition_matrix, opt.gamma, terminal_rows, terminal_values)
