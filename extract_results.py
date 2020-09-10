@@ -86,7 +86,7 @@ if __name__ == '__main__':
     print(len(test_predictions))
     print(test_predictions[0].size())
 
-    sys.exit()
+#    sys.exit()
 
     if opt.sigmoid:
         print("Applying sigmoid")

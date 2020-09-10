@@ -442,26 +442,26 @@ def test_model(model_path, cfg, savename='results.pkl'):
 if __name__ == '__main__':
     default_model_dir = '/mnt/linuxshared/phd-research/better_causalFrames/models/model_on_new_dataset_08-09-2020-05:48:37/'
 
-#    parser = argparse.ArgumentParser()
-#    parser.add_argument('--train', action='store_true')
-#    parser.add_argument('--test', action='store_true')
-#    parser.add_argument('--load_model_dir', type=str, default=default_model_dir)
-#    parser.add_argument('--load_model_num', type=int, default=-1)
-#    parser.add_argument('--test_results_savename', type=str, default='results.pkl')
-#    opt, _ = parser.parse_known_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--train', action='store_true')
+    parser.add_argument('--test', action='store_true')
+    parser.add_argument('--load_model_dir', type=str, default=default_model_dir)
+    parser.add_argument('--load_model_num', type=int, default=-1)
+    parser.add_argument('--test_results_savename', type=str, default='results.pkl')
+    opt, _ = parser.parse_known_args()
     
 #    if opt.train:
 #        cfg_str = '--model_name ryen_sanity_check_model'
 #        train_standard(cfg_str)
-    train_standard()
+#    train_standard()
 
-#    if opt.test:
-#        print("in opt.test")
-#        model_path = os.path.join(opt.load_model_dir, 'model.th')
-#        config_path = os.path.join(opt.load_model_dir, 'config_info.pkl')
-#        model_cfg, _ = pickle.load(open(config_path,'rb'))
-#        update_cfg, _ = get_config(default_dict=model_cfg.__dict__)
-#        test_model(model_path, update_cfg, savename=opt.test_results_savename)        
+    if opt.test:
+        print("in opt.test")
+        model_path = os.path.join(opt.load_model_dir, 'model.th')
+        config_path = os.path.join(opt.load_model_dir, 'config_info.pkl')
+        model_cfg, _ = pickle.load(open(config_path,'rb'))
+        update_cfg, _ = get_config(default_dict=model_cfg.__dict__)
+        test_model(model_path, update_cfg, savename=opt.test_results_savename)        
 
 
 
