@@ -87,14 +87,21 @@ n_states = len(transition_matrix)
 
 
 # Altered to not use max length
-def get_sequence(maxlen = 10):
+def get_sequence(maxlen = None):
     state = 0
     index = 0
     states = [state]
-    while (state <= 7): # and index <= maxlen:
-        state = np.random.choice(n_states, p=transition_matrix[state])
-        states.append(state)
-        index += 1
+
+    if maxlen is not None:
+        while (state <= 7 and index <= maxlen):
+            state = np.random.choice(n_states, p=transition_matrix[state])
+            states.append(state)
+            index += 1
+    else:
+        while (state <= 7): # and index <= maxlen:
+            state = np.random.choice(n_states, p=transition_matrix[state])
+            states.append(state)
+            index += 1
 
     return np.array(states)
 
@@ -179,7 +186,7 @@ def render_sequence(seq, stepsize=0.1):
 #    return terminal_count / N
 
 
-def get_sequences(N, maxlen=20, noise_coeff=0.3):
+def get_sequences(N, maxlen=None, noise_coeff=0.3):
     ones_count = 0
     sequences = []
     states = []
@@ -247,13 +254,14 @@ def render_mnist_movie(steps, seq, max_val=255, data_type=np.uint8, noise=0.1):
     return frames, label
 
 
-def get_mnist_sequences(N, maxlen=20, only_even_gets_reward=False, noise=0.4, seq_noise = 0.3):
+def get_mnist_sequences(N, maxlen=None, only_even_gets_reward=False, noise=0.4, seq_noise = 0.3,
+                        return_digit_label=False):
     crash_count = 0
     sequences = []
     states = []
     steplist = []
     labels = []
-#    digit_labels = []
+    digit_labels = []
     cumulatives = []
     sequences_1d = []
     for j in range(N):
@@ -269,7 +277,7 @@ def get_mnist_sequences(N, maxlen=20, only_even_gets_reward=False, noise=0.4, se
         steplist.append(steps)
         states.append(seq)
         cumulatives.append(cumulative)
-#        digit_labels.append(digit_label)
+        digit_labels.append(digit_label)
 
         # Change this to only be 1 for certain digits
         if seq[-1] == 9:
@@ -279,7 +287,11 @@ def get_mnist_sequences(N, maxlen=20, only_even_gets_reward=False, noise=0.4, se
         else:
             labels.append(0)
 
-    return sequences, sequences_1d, np.array(labels), steplist, states, cumulatives, crash_count / N
+
+    if return_digit_label:
+        return sequences, sequences_1d, np.array(labels), steplist, states, cumulatives, crash_count / N, digit_labels
+    else:
+        return sequences, sequences_1d, np.array(labels), steplist, states, cumulatives, crash_count / N
 
 
 
@@ -316,12 +328,45 @@ class SequenceWindow:
 
         return data, r, is_terminal
 
+class SequenceWindowEmbedded:
+    def __init__(self, seq, label, window_size, return_transitions=True):
+        self.seq = seq
+        self.window_size = window_size
+        self.label = label
+        self.return_transitions = return_transitions
+
+        self._length = max(len(self.seq)-self.window_size+1, 0)
+
+    def __len__(self):
+        return self._length
+
+    def __getitem__(self, i):
+        data = self.seq[i:i+self.window_size]
+        if i == self._length-1:
+            r = self.label
+            is_terminal = True
+        else:
+            r = self.label
+            is_terminal = False
+
+        if self.return_transitions:
+            if is_terminal:
+                future = np.zeros(data.shape)
+            else:
+                future = self.seq[(i+1):(i+1+self.window_size)]
+            data = np.stack((data, future))
+            
+
+        return data, r, is_terminal
+
+
 class SequenceLoader(nn.Module):
     def __init__(self, sequences, labels, steps, states, 
                 window_size=10, randomize=True, 
                 batch_size=128, return_transitions=True,
-                post_transform=None):
-        self.sequences = Zipindexables([SequenceWindow(sequences[i], labels[i], 
+                post_transform=None,
+                windowclass=SequenceWindow):
+        self.sequences = Zipindexables([windowclass(sequences[i], labels[i], 
                                         window_size, return_transitions=return_transitions) for i in range(len(sequences))])
         self.labels = labels
         self.steps = steps
@@ -374,7 +419,7 @@ class SequenceLoader(nn.Module):
 
         
 def test_sequence_loader():
-    sequences, labels, steps, states, cumulatives, proportion = get_sequences(100)
+    sequences, labels, steps, states, cumulatives, proportion = (100)
     loader = SequenceLoader(sequences, labels, steps, states, batch_size=128)
 
     print(len(loader))
@@ -389,6 +434,115 @@ def test_sequence_loader():
 #test_sequence_loader()
 
 
+def embedded_mnist_loader(N, load_from, device='cuda:0'):
+    mnist_seqs, _, _, _, _, _, _, digit_labels = get_mnist_sequences(N, maxlen=10, 
+                                                                    only_even_gets_reward=True, 
+                                                                    noise=0.001, 
+                                                                    seq_noise = 0.001,
+                                                                    return_digit_label=True)
+    loader = SequenceLoader(mnist_seqs, digit_labels, None, None, return_transitions=False, randomize=True, batch_size=64, window_size=10, post_transform=lambda x: x/255.0, windowclass=SequenceWindowEmbedded)
+
+    net = resnet18_flexible(num_classes=1, data_channels=10, return_features=True)
+    net = net.to(device)
+
+    if load_from is not None:
+        print("loading embedding model from {}".format(load_from))
+        net.load_state_dict(torch.load(load_from, map_location=device))
+    
+    net.eval()
+
+    batch_features, batch_labels = [], []
+    for batch in loader:
+        x, y, _ = batch
+        x = x.to(device)
+        _, features = net(x)
+        features = features.detach().cpu()
+        batch_features.append(features)
+        batch_labels.append(y)
+
+    return batch_features, batch_labels
+
+#  Can train by iterating through chucks of the above
+
+    # To do:
+    #  Add maxlen back into sequence creation because don't want to generate excess frames. Fix up other functions that this disrupts.
+    #  Add ability of flexible resnet to return embeddings
+    #  Generate lots of mnist vids with with exactly 10 frames and put them in sequence loader;
+    #    use the digit_label as the label
+    #  Iterate through the vids and get the embeddings and the digit labels
+    # Then put the embeddings back into a sequence loader and return than
+
+
+class ParityNet(nn.Module):
+    def __init__(self, input_size=512*4):
+        super().__init__()
+
+        self.net = nn.Sequential(
+                nn.Linear(input_size, 1024),
+                nn.ReLU(),
+                nn.Linear(1024, 512),
+                nn.ReLU(),
+                nn.Linear(512, 1)
+                )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+def train_parity_net():
+    parity_net = ParityNet()
+    optimizer = optim.Adam(parity_net.parameters(), lr=0.001)
+    criterion = nn.BCEWithLogitsLoss()
+    
+    batch_features, batch_labels = embedded_mnist_loader(200, 'mnist_even_only_977_low_noise_15.pth')
+
+    for epoch in range(5):
+        print("Epoch", epoch)
+        total_loss = 0.0
+        iteration = 0
+        total_accuracy = 0.0
+        total_count = 0
+        for batch, labels in zip(batch_features, batch_labels):
+            iteration += 1
+            predictions = parity_net(batch).squeeze()
+            labels = (labels%2==0).float()
+            loss = criterion(predictions, labels)
+
+            parity_net.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+
+            total_accuracy += ((predictions >= 0.5) == (labels >= 0.5)).sum()
+            total_count += len(labels)
+
+            if iteration%100 == 0:
+                print("Loss: {0}, accuracy: {1}".format(total_loss / iteration, total_accuracy/total_count))
+
+        print("Saving")
+        torch.save(parity_net.state_dict(), 'parity_net.pth')
+
+def test_parity_net():
+    parity_net = ParityNet()
+    parity_net.load_state_dict(torch.load('parity_net.pth',map_location='cpu'))
+#    optimizer = optim.Adam(parity_net.parameters(), lr=0.001)
+#    criterion = nn.BCEWithLogitsLoss()
+    
+    batch_features, batch_labels = embedded_mnist_loader(200, 'mnist_even_only_977_low_noise_15.pth')
+
+    iteration = 0
+    total_accuracy = 0.0
+    total_count = 0
+    for batch, labels in zip(batch_features, batch_labels):
+        iteration += 1
+        predictions = parity_net(batch).squeeze()
+        labels = (labels%2==0).float()
+
+        total_accuracy += ((predictions >= 0.5) == (labels >= 0.5)).sum()
+        total_count += len(labels)
+
+        print("accuracy: {0}".format(total_accuracy/total_count))
 
 #seq = np.array([0,1,2,3,4])
 #render_sequence(seq)
@@ -780,6 +934,8 @@ if __name__ == '__main__':
     parser.add_argument('--test_mnist_seq', action='store_true')
     parser.add_argument('--test_program', action='store_true')
     parser.add_argument('--terminal_values', action='store_true')
+    parser.add_argument('--train_parity_net', action='store_true')
+    parser.add_argument('--test_parity_net', action='store_true')
 
     parser.add_argument('--make_mnist_movie', action='store_true')
     parser.add_argument('--movie_name', type=str, default='mnist_out.mp4')
@@ -796,6 +952,12 @@ if __name__ == '__main__':
 
     opt = parser.parse_args()
   
+
+    if opt.train_parity_net:
+        train_parity_net()
+
+    if opt.test_parity_net:
+        test_parity_net()
 
     if opt.make_mnist_movie:
         import imageio
