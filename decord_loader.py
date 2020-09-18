@@ -4,7 +4,8 @@ import numpy as np
 import pickle
 import os
 import cv2
-from config import datadir as data_directory #, trainvids, testvids
+#from config import datadir as data_directory #, trainvids, testvids
+from config import get_config
 #from video_loader import play_video
 
 # Load videos in parallel if possible
@@ -14,7 +15,7 @@ import time
 
 #label_file = './annotation/full_annotation.txt'
 #split_file = './annotation/traintest_split.pkl'
-from config import label_file, split_file
+#from config import label_file, split_file
 
 decord.bridge.set_bridge('torch') 
 
@@ -320,7 +321,7 @@ class VideoFrameLoader:
 
 
 
-def get_label_data(data_directory = data_directory, label_file = label_file, split_file=split_file):
+def get_label_data(data_directory, label_file, split_file=None):
 #    with open(os.path.join(data_directory, label_file), 'r') as labfile:
     with open(os.path.join(label_file), 'r') as labfile:
 
@@ -347,7 +348,8 @@ def get_label_data(data_directory = data_directory, label_file = label_file, spl
 
 
 def test_loader():
-    fullpaths, times, labels = get_label_data(split_file=None)
+    cfg = get_config()
+    fullpaths, times, labels = get_label_data(cfg.data_directory, cfg.label_file, cfg.split_file)
 
     vidloader = VideoFrameLoader(fullpaths,labels,
                                 preload_num=10,
@@ -371,7 +373,8 @@ def test_loader():
 
 
 def test2():
-    fullpaths, times, labels = get_label_data()
+    cfg = get_config()
+    fullpaths, times, labels = get_label_data(cfg.data_directory, cfg.label_file, cfg.split_file)
     vidloader = VideoFrameLoader(fullpaths[:5],labels[:5],
                                 preload_num=2,
                                 shuffle_files=True, 

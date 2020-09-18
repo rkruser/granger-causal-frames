@@ -363,14 +363,35 @@ def random_seed(seed):
 
 
 
-def run_job(trainvids, trainlabels, testvids, testlabels, cfg_str = None, jobid=None):
-    cfg, args = get_config(stringargs=cfg_str)
+#def run_job(trainvids, trainlabels, testvids, testlabels, cfg_str = None, jobid=None):
+#    cfg, args = get_config(stringargs=cfg_str)
+#    if jobid is not None:
+#        cfg.model_name += '_'+str(jobid)
+#    if cfg.use_q_loss:
+#        cfg.use_transitions=True
+#    print(args)
+#    print(cfg)
+#    random_seed(cfg.random_seed)
+#    train_set = construct_dataset_from_config(cfg, trainvids, trainlabels, shuffle_files=True)
+#    test_set = construct_dataset_from_config(cfg, testvids, testlabels, shuffle_files=False)
+#    model = construct_model_from_config(cfg)
+#    train_and_test(model, train_set, test_set, cfg, args)
+
+
+def train_standard(cfg, args, job_id=None):
+#    cfg, args = get_config(stringargs=cfg_str)
     if jobid is not None:
         cfg.model_name += '_'+str(jobid)
     if cfg.use_q_loss:
         cfg.use_transitions=True
     print(args)
     print(cfg)
+
+    train, test = get_label_data(cfg.data_directory, cfg.label_file, 
+                                 cfg.split_file)
+    trainvids, _, trainlabels = train
+    testvids, _, testlabels = test
+
     random_seed(cfg.random_seed)
     train_set = construct_dataset_from_config(cfg, trainvids, trainlabels, shuffle_files=True)
     test_set = construct_dataset_from_config(cfg, testvids, testlabels, shuffle_files=False)
@@ -378,19 +399,15 @@ def run_job(trainvids, trainlabels, testvids, testlabels, cfg_str = None, jobid=
     train_and_test(model, train_set, test_set, cfg, args)
 
 
-def train_standard(cfg_str = None, job_id=None):
-    train, test = get_label_data()
-    train_fullpaths, train_times, train_labels = train
-    test_fullpaths, test_times, test_labels = test
-
-    run_job(train_fullpaths, train_labels, test_fullpaths, test_labels, cfg_str=cfg_str, jobid=job_id)
+#    run_job(train_fullpaths, train_labels, test_fullpaths, test_labels, cfg_str=cfg_str, jobid=job_id)
 
 
 def test_model(model_path, cfg, savename='results.pkl'):
     print("Testing")
     print(cfg)
 
-    train, test = get_label_data()
+    train, test = get_label_data(cfg.data_directory, cfg.label_file, 
+                                 cfg.split_file)
     train_fullpaths, train_times, train_labels = train
     test_fullpaths, test_times, test_labels = test
     train_set = construct_dataset_from_config(cfg, train_fullpaths, train_labels, shuffle_files=False)
@@ -448,11 +465,12 @@ if __name__ == '__main__':
     parser.add_argument('--load_model_dir', type=str, default=default_model_dir)
     parser.add_argument('--load_model_num', type=int, default=-1)
     parser.add_argument('--test_results_savename', type=str, default='results.pkl')
-    opt, _ = parser.parse_known_args()
+    opt, remaining_args = parser.parse_known_args()
     
-#    if opt.train:
-#        cfg_str = '--model_name ryen_sanity_check_model'
-#        train_standard(cfg_str)
+    if opt.train:
+        #cfg_str = '--model_name ryen_sanity_check_model'
+        cfg, args = get_config(remaining_args)
+        train_standard(cfg, args)
 #    train_standard()
 
     if opt.test:
@@ -460,7 +478,7 @@ if __name__ == '__main__':
         model_path = os.path.join(opt.load_model_dir, 'model.th')
         config_path = os.path.join(opt.load_model_dir, 'config_info.pkl')
         model_cfg, _ = pickle.load(open(config_path,'rb'))
-        update_cfg, _ = get_config(default_dict=model_cfg.__dict__)
+        update_cfg, _ = get_config(args=remaining_args, default_dict=model_cfg.__dict__)
         test_model(model_path, update_cfg, savename=opt.test_results_savename)        
 
 

@@ -4,32 +4,6 @@ import sys
 import os
 
 from socket import gethostname# as hostname
-hostname = gethostname()
-if 'LV426' in hostname:
-    datadir = '/mnt/linuxshared/data/BeamNG'
-    modeldir = './models'
-    label_file = os.path.join(datadir, 'full_annotation.txt')
-    split_file = os.path.join(datadir, 'traintest_split.pkl')
-elif 'vulcan' in hostname:
-    modeldir = '/cfarhomes/krusinga/storage/research/causality/granger-causal-frames/models'
-#    datadir = '/vulcan/scratch/ywen/car_crash/BeamNG_dataset'
-    datadir = '/scratch0/krusinga/BeamNG_dataset'
-    label_file = './annotation/full_annotation.txt'
-    split_file = './annotation/traintest_split.pkl'
-
-elif 'jacobswks20' in hostname:
-    modeldir = './models'
-    datadir = '/scratch0/datasets/BeamNG_dataset'
-    label_file = './annotation/full_annotation.txt'
-    split_file = './annotation/traintest_split.pkl'
-#    label_file = os.path.join(datadir, 'full_annotation.txt')
-#    split_file = os.path.join(datadir, 'traintest_split.pkl')
-
-else:
-    print("Unknown hostname")
-    datadir = './all_vids'
-    modeldir = './models'
-    print("Default to", datadir, modeldir)
 
 default_config_params = {
     # Training
@@ -51,6 +25,7 @@ default_config_params = {
     'terminal_weight':1, #weight of terminal states in loss
     'use_data_parallel':True,
     'randomize_start_frame':True,
+    'dataset': 'beamng_regular', #Options: beamng_regular, beamng_simple
 
     # Data preprocessing
     'frame_sample_freq': 3, #every 5th frame
@@ -70,11 +45,56 @@ default_config_params = {
     'model_name': 'model_terminal_1_gamma_977',
     'model_directory': modeldir,
     'model_checkpoint_number': -1,
-    'data_directory': datadir,
+#    'data_directory': datadir,
     'device':'cuda:0',
     'random_seed': 53,
     'overwrite_last': True
 }
+
+def get_dataset_params(dataset='beamng_regular'):
+    hostname = gethostname()
+
+    if dataset == 'beamng_regular':
+        if 'LV426' in hostname:
+            datadir = '/mnt/linuxshared/data/BeamNG'
+            modeldir = './models'
+            label_file = os.path.join(datadir, 'full_annotation.txt')
+            split_file = os.path.join(datadir, 'traintest_split.pkl')
+        elif 'vulcan' in hostname:
+            modeldir = '/cfarhomes/krusinga/storage/research/causality/granger-causal-frames/models'
+        #    datadir = '/vulcan/scratch/ywen/car_crash/BeamNG_dataset'
+            datadir = '/scratch0/krusinga/BeamNG_dataset'
+            label_file = './annotation/full_annotation.txt'
+            split_file = './annotation/traintest_split.pkl'
+
+        elif 'jacobswks20' in hostname:
+            modeldir = './models'
+            datadir = '/scratch0/datasets/BeamNG_dataset'
+            label_file = './annotation/full_annotation.txt'
+            split_file = './annotation/traintest_split.pkl'
+        #    label_file = os.path.join(datadir, 'full_annotation.txt')
+        #    split_file = os.path.join(datadir, 'traintest_split.pkl')
+
+        else:
+            print("Dataset not known on this host")
+            datadir = './all_vids'
+            modeldir = './models'
+            print("Default to", datadir, modeldir)
+    elif dataset == 'beamng_simple':
+        if 'vulcan' in hostname:
+            datadir = '/vulcanscratch/ywen/car_crash/simple_dataset'
+            label_file = './annotation/simple_dataset/full_annotation.txt'
+            split_file = './annotation/simple_dataset/traintest_split.pkl'
+        else:
+            print("Dataset not known on this host")
+            sys.exit(1)
+    else:
+        print("Unknown dataset")
+        sys.exit(1)
+
+    return datadir, label_file, split_file
+       
+
 
 # Items can repeat here
 #partitions = {
@@ -100,14 +120,23 @@ def construct_parser(cfg_dict):
     return parser
 
         
-def get_config(stringargs=None, default_dict = default_config_params): #Maybe add optional argument so can change configs from command line
+# args should be either None or a list of command line arguments
+def get_config(args=None, stringargs=None, default_dict = default_config_params): #Maybe add optional argument so can change configs from command line
     parser = construct_parser(default_dict)
-    if stringargs is None:
-        args = sys.argv[1:]
-    else:
-        args = stringargs.split() + sys.argv[1:] # Allow both command line and string args
+
+    if args is None:
+        if stringargs is None:
+            args = sys.argv[1:]
+        else:
+            args = stringargs.split() + sys.argv[1:] # Allow both command line and string args
 
     cfg, _ = parser.parse_known_args(args)
+
+    data_dir, label_file, split_file = get_dataset_params(cfg.dataset)
+    cfg.data_directory = data_dir
+    cfg.label_file = label_file
+    cfg.split_file = split_file
+
     return cfg, args
 
 
