@@ -2,6 +2,7 @@
 import argparse
 import sys
 import os
+import torch
 
 from socket import gethostname# as hostname
 
@@ -43,10 +44,10 @@ default_config_params = {
 
     # General
     'model_name': 'model_terminal_1_gamma_977',
-    'model_directory': modeldir,
+#    'model_directory': modeldir,
     'model_checkpoint_number': -1,
 #    'data_directory': datadir,
-    'device':'cuda:0',
+    'device': 'cuda:0' if torch.cuda.is_available() else 'cpu',
     'random_seed': 53,
     'overwrite_last': True
 }
@@ -82,9 +83,12 @@ def get_dataset_params(dataset='beamng_regular'):
             print("Default to", datadir, modeldir)
     elif dataset == 'beamng_simple':
         if 'vulcan' in hostname:
-            datadir = '/vulcanscratch/ywen/car_crash/simple_dataset'
+#            datadir = '/vulcanscratch/ywen/car_crash/simple_dataset'
+            datadir = '/scratch0/krusinga/simple_dataset'
+
             label_file = './annotation/simple_dataset/full_annotation.txt'
             split_file = './annotation/simple_dataset/traintest_split.pkl'
+            modeldir = '/cfarhomes/krusinga/storage/research/causality/granger-causal-frames/models'
         else:
             print("Dataset not known on this host")
             sys.exit(1)
@@ -92,7 +96,7 @@ def get_dataset_params(dataset='beamng_regular'):
         print("Unknown dataset")
         sys.exit(1)
 
-    return datadir, label_file, split_file
+    return datadir, label_file, split_file, modeldir
        
 
 
@@ -132,10 +136,11 @@ def get_config(args=None, stringargs=None, default_dict = default_config_params)
 
     cfg, _ = parser.parse_known_args(args)
 
-    data_dir, label_file, split_file = get_dataset_params(cfg.dataset)
+    data_dir, label_file, split_file, model_dir = get_dataset_params(cfg.dataset)
     cfg.data_directory = data_dir
     cfg.label_file = label_file
     cfg.split_file = split_file
+    cfg.model_directory = model_dir
 
     return cfg, args
 

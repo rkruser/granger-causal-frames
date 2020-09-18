@@ -378,7 +378,7 @@ def random_seed(seed):
 #    train_and_test(model, train_set, test_set, cfg, args)
 
 
-def train_standard(cfg, args, job_id=None):
+def train_standard(cfg, args, jobid=None):
 #    cfg, args = get_config(stringargs=cfg_str)
     if jobid is not None:
         cfg.model_name += '_'+str(jobid)
@@ -468,13 +468,14 @@ if __name__ == '__main__':
     opt, remaining_args = parser.parse_known_args()
     
     if opt.train:
+        print("Training")
         #cfg_str = '--model_name ryen_sanity_check_model'
         cfg, args = get_config(remaining_args)
         train_standard(cfg, args)
 #    train_standard()
 
     if opt.test:
-        print("in opt.test")
+        print("Testing")
         model_path = os.path.join(opt.load_model_dir, 'model.th')
         config_path = os.path.join(opt.load_model_dir, 'config_info.pkl')
         model_cfg, _ = pickle.load(open(config_path,'rb'))
