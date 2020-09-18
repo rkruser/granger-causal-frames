@@ -89,7 +89,7 @@ n_states = len(transition_matrix)
 # Altered to not use max length
 def get_sequence(maxlen = None):
     state = 0
-    index = 0
+    index = 1 # !!!!!!!!
     states = [state]
 
     if maxlen is not None:
@@ -98,7 +98,7 @@ def get_sequence(maxlen = None):
             states.append(state)
             index += 1
     else:
-        while (state <= 7): # and index <= maxlen:
+        while (state <= 7):
             state = np.random.choice(n_states, p=transition_matrix[state])
             states.append(state)
             index += 1
@@ -217,7 +217,7 @@ mnist = dset.MNIST('/mnt/linuxshared/data/',
                        transforms.ToTensor()
                        ]))
 
-def render_mnist_movie(steps, seq, max_val=255, data_type=np.uint8, noise=0.1):
+def render_mnist_movie(steps, seq, max_val=255, data_type=np.uint8, noise=0.1, preappend_num=None):
     frames = []
     digit, label = mnist[np.random.choice(len(mnist))]
     #digit = (maxval*digit.numpy()).astype(data_type)
@@ -245,7 +245,13 @@ def render_mnist_movie(steps, seq, max_val=255, data_type=np.uint8, noise=0.1):
         canvas[new_y:new_y+64, new_x:new_x+64] = digit
         frames.append(canvas)
 
+
+
     frames = np.stack(frames)
+
+    if preappend_num is not None:
+        frames = np.concatenate((np.zeros((preappend_num, 224, 224)), frames))
+
     if noise > 0:
         frames += noise*2*(np.random.rand(*frames.shape)-0.5)
 
@@ -254,8 +260,8 @@ def render_mnist_movie(steps, seq, max_val=255, data_type=np.uint8, noise=0.1):
     return frames, label
 
 
-def get_mnist_sequences(N, maxlen=None, only_even_gets_reward=False, noise=0.4, seq_noise = 0.3,
-                        return_digit_label=False):
+def get_mnist_sequences(N, maxlen=None, only_even_gets_reward=False, digit_reward_only=False, noise=0.4, seq_noise = 0.3,
+                        return_digit_label=False, preappend_num=None):
     crash_count = 0
     sequences = []
     states = []
@@ -269,7 +275,7 @@ def get_mnist_sequences(N, maxlen=None, only_even_gets_reward=False, noise=0.4, 
         seq = get_sequence(maxlen)
         steps, result, cumulative = render_sequence(seq, stepsize=0.1)
         result += seq_noise*np.random.randn(len(result))
-        frames, digit_label = render_mnist_movie(steps, result, noise=noise)
+        frames, digit_label = render_mnist_movie(steps, result, noise=noise, preappend_num=preappend_num)
 #        frames = np.expand_dims(frames, axis=1)
 
         sequences.append(frames)
@@ -280,12 +286,15 @@ def get_mnist_sequences(N, maxlen=None, only_even_gets_reward=False, noise=0.4, 
         digit_labels.append(digit_label)
 
         # Change this to only be 1 for certain digits
-        if seq[-1] == 9:
-            keep = (digit_label%2 == 0) if only_even_gets_reward else True
-            crash_count += 1*keep #yes you can multiply bools and numbers
-            labels.append(1*keep)
+        if not digit_reward_only:
+            if seq[-1] == 9:
+                keep = (digit_label%2 == 0) if only_even_gets_reward else True
+                crash_count += 1*keep #yes you can multiply bools and numbers
+                labels.append(1*keep)
+            else:
+                labels.append(0)
         else:
-            labels.append(0)
+            labels.append(int(digit_label%2==0))
 
 
     if return_digit_label:
@@ -328,6 +337,7 @@ class SequenceWindow:
 
         return data, r, is_terminal
 
+
 class SequenceWindowEmbedded:
     def __init__(self, seq, label, window_size, return_transitions=True):
         self.seq = seq
@@ -361,6 +371,8 @@ class SequenceWindowEmbedded:
 
 
 class SequenceLoader(nn.Module):
+    # Note: steps and states are currently unused
+    # Due to preappend, steps/states length may not match sequence length
     def __init__(self, sequences, labels, steps, states, 
                 window_size=10, randomize=True, 
                 batch_size=128, return_transitions=True,
@@ -434,12 +446,13 @@ def test_sequence_loader():
 #test_sequence_loader()
 
 
-def embedded_mnist_loader(N, load_from, device='cuda:0'):
-    mnist_seqs, _, _, _, _, _, _, digit_labels = get_mnist_sequences(N, maxlen=10, 
+def embedded_mnist_loader(N, load_from, device='cuda:0', preappend_num=None, maxlen=10):
+    mnist_seqs, _, _, _, _, _, _, digit_labels = get_mnist_sequences(N, maxlen=maxlen, 
                                                                     only_even_gets_reward=True, 
                                                                     noise=0.001, 
                                                                     seq_noise = 0.001,
-                                                                    return_digit_label=True)
+                                                                    return_digit_label=True,
+                                                                    preappend_num=preappend_num)
     loader = SequenceLoader(mnist_seqs, digit_labels, None, None, return_transitions=False, randomize=True, batch_size=64, window_size=10, post_transform=lambda x: x/255.0, windowclass=SequenceWindowEmbedded)
 
     net = resnet18_flexible(num_classes=1, data_channels=10, return_features=True)
@@ -452,7 +465,7 @@ def embedded_mnist_loader(N, load_from, device='cuda:0'):
     net.eval()
 
     batch_features, batch_labels = [], []
-    for batch in loader:
+    for batch in loader: 
         x, y, _ = batch
         x = x.to(device)
         _, features = net(x)
@@ -461,6 +474,31 @@ def embedded_mnist_loader(N, load_from, device='cuda:0'):
         batch_labels.append(y)
 
     return batch_features, batch_labels
+
+
+def raw_mnist_frame_loader(N, device='cuda:0', preappend_num=9, maxlen=1):
+
+    mnist_seqs, _, _, _, _, _, _, digit_labels = get_mnist_sequences(N, maxlen=maxlen, 
+                                                                    only_even_gets_reward=True, 
+                                                                    noise=0.001, 
+                                                                    seq_noise = 0.001,
+                                                                    return_digit_label=True,
+                                                                    preappend_num=preappend_num)
+    loader = SequenceLoader(mnist_seqs, digit_labels, None, None, return_transitions=False, randomize=True, batch_size=64, window_size=10, post_transform=lambda x: x/255.0, windowclass=SequenceWindow)
+
+    batch_frames, batch_labels = [], []
+    for batch in loader:
+        x, y, _ = batch
+        batch_size = x.size(0)
+        x = x[:,9,:,:].unsqueeze(1)
+        x = torch.nn.functional.interpolate(x,64) #Make smaller for tractability
+        x = x.view(batch_size,-1) #Only first frame
+        x = x.to('cpu') #??
+        batch_frames.append(x)
+        batch_labels.append(y)
+
+    return batch_frames, batch_labels
+
 
 #  Can train by iterating through chucks of the above
 
@@ -488,15 +526,42 @@ class ParityNet(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+class LinearParityNet(nn.Module):
+    def __init__(self, input_size=512*4):
+        super().__init__()
 
-def train_parity_net():
-    parity_net = ParityNet()
+        self.net = nn.Linear(input_size,1)
+
+    def forward(self, x):
+        return self.net(x)
+
+
+
+def train_parity_net(preappend_num=9, max_pt_len=1, parity_model='embedded', embedding_model='mnist_even_only_977_low_noise_15.pth', n_train_pts = 100, parity_net_name='parity_net.pth', nepochs=100):
+
+    if parity_model == 'embedded':
+        print("Training parity net on embeddings")
+
+        parity_net = LinearParityNet(2048)
+        batch_features, batch_labels = embedded_mnist_loader(n_train_pts, embedding_model,
+                                                maxlen=max_pt_len, preappend_num=preappend_num)
+    elif parity_model == 'raw':
+        print("Training parity net on raw")
+
+        parity_net = LinearParityNet(4096)
+        batch_features, batch_labels = raw_mnist_frame_loader(n_train_pts,
+                                                maxlen=max_pt_len, preappend_num=preappend_num)
+    else:
+        print("Unrecognized parity model")
+        sys.exit(1)
+
+
+
     optimizer = optim.Adam(parity_net.parameters(), lr=0.001)
     criterion = nn.BCEWithLogitsLoss()
     
-    batch_features, batch_labels = embedded_mnist_loader(200, 'mnist_even_only_977_low_noise_15.pth')
 
-    for epoch in range(5):
+    for epoch in range(nepochs):
         print("Epoch", epoch)
         total_loss = 0.0
         iteration = 0
@@ -521,15 +586,30 @@ def train_parity_net():
                 print("Loss: {0}, accuracy: {1}".format(total_loss / iteration, total_accuracy/total_count))
 
         print("Saving")
-        torch.save(parity_net.state_dict(), 'parity_net.pth')
+        torch.save(parity_net.state_dict(), parity_net_name)
 
-def test_parity_net():
-    parity_net = ParityNet()
-    parity_net.load_state_dict(torch.load('parity_net.pth',map_location='cpu'))
-#    optimizer = optim.Adam(parity_net.parameters(), lr=0.001)
-#    criterion = nn.BCEWithLogitsLoss()
-    
-    batch_features, batch_labels = embedded_mnist_loader(200, 'mnist_even_only_977_low_noise_15.pth')
+def test_parity_net(preappend_num=9, max_pt_len=1, parity_model='embedded', embedding_model='mnist_even_only_977_low_noise_15.pth', n_test_pts = 100, parity_net_name='parity_net.pth'):
+
+    if parity_model == 'embedded':
+        print("Testing parity net on embeddings")
+
+        parity_net = LinearParityNet(2048)
+        parity_net.load_state_dict(torch.load(parity_net_name,map_location='cpu'))
+
+        batch_features, batch_labels = embedded_mnist_loader(n_test_pts, embedding_model,
+                                                maxlen=max_pt_len, preappend_num=preappend_num)
+    elif parity_model == 'raw':
+        print("Testing parity net on raw")
+
+        parity_net = LinearParityNet(4096)
+        parity_net.load_state_dict(torch.load(parity_net_name,map_location='cpu'))
+        batch_features, batch_labels = raw_mnist_frame_loader(n_test_pts,
+                                                maxlen=max_pt_len, preappend_num=preappend_num)
+    else:
+        print("Unrecognized parity model")
+        sys.exit(1)
+
+
 
     iteration = 0
     total_accuracy = 0.0
@@ -621,7 +701,7 @@ def train_sequence_net(n_epochs, save_every=5, device='cuda:0', rl_gamma=0.999, 
             print("Saving")
             torch.save(net.state_dict(), out_name)
 
-def train_mnist_sequence_net(n_epochs, save_every=1, device='cuda:0', rl_gamma=0.999, terminal_weight=1, out_name='seq_net.pth', load_from=None, only_even=False, sequence_noise=0.1, image_noise=0.05):
+def train_mnist_sequence_net(n_epochs, save_every=1, device='cuda:0', rl_gamma=0.999, terminal_weight=1, out_name='seq_net.pth', load_from=None, only_even=False, sequence_noise=0.1, image_noise=0.05, preappend_num=None, digit_reward_only = False):
     net = resnet18_flexible(num_classes=1, data_channels=10)
     net = net.to(device)
     optimizer = optim.Adam(net.parameters(), lr=0.0002)
@@ -630,7 +710,8 @@ def train_mnist_sequence_net(n_epochs, save_every=1, device='cuda:0', rl_gamma=0
         print("loading from {}".format(load_from))
         net.load_state_dict(torch.load(load_from, map_location=device))
 
-    train_sequences, _, train_labels, train_steps, train_states, _, train_proportion = get_mnist_sequences(500, noise=image_noise, seq_noise=sequence_noise, only_even_gets_reward = only_even)
+    train_sequences, _, train_labels, train_steps, train_states, _, train_proportion = get_mnist_sequences(500, noise=image_noise, seq_noise=sequence_noise, only_even_gets_reward = only_even, 
+            digit_reward_only=digit_reward_only, preappend_num=preappend_num)
 
     if only_even:
         print("Only even rewards")
@@ -807,14 +888,14 @@ def test_sequence_net(model_path='sequence_net.pth', device='cpu', threshold=0.5
 #        plt.close(2)
 
 
-def test_mnist_sequence_net(model_path='mnist_resnet18.pth', device='cuda:0', threshold=0.9, only_even=False, gamma=0.977):
+def test_mnist_sequence_net(model_path='mnist_resnet18.pth', device='cuda:0', threshold=0.9, only_even=False, gamma=0.977, preappend_num=None):
     net = resnet18_flexible(num_classes=1, data_channels=10)
     net.load_state_dict(torch.load(model_path, map_location=device))
 
     analytical_vals = analytical_values(transition_matrix, gamma, terminal_rows, terminal_values)
 
 
-    test_sequences, test_sequences_1d, test_labels, test_steps, test_states, cumulatives, test_proportion = get_mnist_sequences(20, noise=0.05, seq_noise=0.1, only_even_gets_reward=only_even)
+    test_sequences, test_sequences_1d, test_labels, test_steps, test_states, cumulatives, test_proportion = get_mnist_sequences(20, noise=0.05, seq_noise=0.1, only_even_gets_reward=only_even, preappend_num=preappend_num)
 
     if only_even:
         print("Only even rewards")
@@ -946,18 +1027,40 @@ if __name__ == '__main__':
     parser.add_argument('--save_every', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.977)
     parser.add_argument('--only_even', action='store_true')
+    parser.add_argument('--digit_reward_only', action='store_true')
     parser.add_argument('--seq_noise', type=float, default=0.1)
     parser.add_argument('--image_noise', type=float, default=0.05)
     parser.add_argument('--load_from', type=str, default=None)
+    parser.add_argument('--preappend_num', type=int, default=9)
+
+    parser.add_argument('--parity_net_max_pt_len', type=int, default=1)
+    parser.add_argument('--parity_model', type=str, default='embedded')
+    parser.add_argument('--parity_embeddings_model_file', type=str, default=None)
+    parser.add_argument('--parity_model_file', type=str, default=None)
+    parser.add_argument('--parity_net_train_points', type=int, default=100)
+    parser.add_argument('--parity_net_test_points', type=int, default=500)
+    parser.add_argument('--parity_net_epochs', type=int, default=100)
+
 
     opt = parser.parse_args()
   
 
     if opt.train_parity_net:
-        train_parity_net()
+        train_parity_net(preappend_num=opt.preappend_num, 
+                        max_pt_len=opt.parity_net_max_pt_len,
+                        parity_model = opt.parity_model,
+                        embedding_model=opt.parity_embeddings_model_file,
+                        n_train_pts=opt.parity_net_train_points,
+                        parity_net_name=opt.parity_model_file,
+                        nepochs = opt.parity_net_epochs)
 
     if opt.test_parity_net:
-        test_parity_net()
+        test_parity_net(preappend_num=opt.preappend_num, 
+                        max_pt_len=opt.parity_net_max_pt_len,
+                        parity_model = opt.parity_model,
+                        embedding_model=opt.parity_embeddings_model_file,
+                        n_test_pts=opt.parity_net_test_points,
+                        parity_net_name=opt.parity_model_file)
 
     if opt.make_mnist_movie:
         import imageio
@@ -987,15 +1090,17 @@ if __name__ == '__main__':
                                 out_name=opt.model_name, 
                                 load_from=opt.load_from,
                                 only_even=opt.only_even,
+                                digit_reward_only=opt.digit_reward_only,
                                 image_noise=opt.image_noise,
-                                sequence_noise=opt.seq_noise)
+                                sequence_noise=opt.seq_noise,
+                                preappend_num=opt.preappend_num)
 
     if opt.terminal_values:
         vals = analytical_values(transition_matrix, opt.gamma, terminal_rows, terminal_values)
         print(vals)
 
     if opt.test_mnist_seq:
-        test_mnist_sequence_net(model_path=opt.model_name, threshold=opt.threshold, device=opt.device, only_even=opt.only_even, gamma=opt.gamma)
+        test_mnist_sequence_net(model_path=opt.model_name, threshold=opt.threshold, device=opt.device, only_even=opt.only_even, gamma=opt.gamma, preappend_num=opt.preappend_num)
 
 
 #test_mnist_sequence_net(model_path='mnist_resnet18.pth', threshold=0.9, device='cuda:0')
@@ -1006,7 +1111,7 @@ if __name__ == '__main__':
 
 
 
-
+# preappend_num=9, max_pt_len=1, parity_model='embedded', embedding_model='mnist_even_only_977_low_noise_15.pth', n_test_pts = 100, parity_net_name='parity_net.pth'
 
 
 

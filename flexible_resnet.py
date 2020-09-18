@@ -100,13 +100,15 @@ class ResNet(nn.Module):
 
     def __init__(self, block, layers, num_classes=1000, data_channels=3, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None, return_features=False):
+                 norm_layer=None, return_features=False, final_embedding_size=None):
         super(ResNet, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
 
         self.return_features = return_features # Added by Ryen
+        self.final_embedding_size = final_embedding_size # added by Ryen
+
 
         self.inplanes = 64
         self.dilation = 1
@@ -132,7 +134,16 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+#        if self.final_embedding_size is not None:
+#            self.embedding_layer = nn.Sequential(
+#                                            nn.Linear(512 * block.expansion, final_embedding_size),
+#                                            self.relu,
+#                                            nn.Linear(final_embedding_size, num_classes)
+#                                            )
+#        else:
         self.fc = nn.Linear(512 * block.expansion, num_classes)
+
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -232,6 +243,7 @@ def old_resnet101_flexible(**kwargs):
 
 def resnet18_flexible(**kwargs):
     return ResNet(Bottleneck, [2,2,2,2], **kwargs)
+
 
 def resnet50_flexible(**kwargs):
     return ResNet(Bottleneck, [3,4,6,3], **kwargs)
