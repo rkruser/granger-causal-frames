@@ -465,15 +465,26 @@ def embedded_mnist_loader(N, load_from, device='cuda:0', preappend_num=None, max
     net.eval()
 
     batch_features, batch_labels = [], []
-    for batch in loader: 
-        x, y, _ = batch
+#    for batch in loader: 
+#        x, y, _ = batch
+#        x = x.to(device)
+#        _, features = net(x)
+#        features = features.detach().cpu()
+#        batch_features.append(features)
+#        batch_labels.append(y)
+    for i in range(loader.sequences.num_indexables()):
+        batch_window_loader = loader.sequences.get_indexable(i)
+        x, y, _ = batch_window_loader[len(batch_window_loader)-1]
+        x = torch.from_numpy(x).float().unsqueeze(0) / 255.0
+
         x = x.to(device)
         _, features = net(x)
         features = features.detach().cpu()
         batch_features.append(features)
         batch_labels.append(y)
 
-    return batch_features, batch_labels
+
+    return batch_features, torch.Tensor(batch_labels)
 
 
 def raw_mnist_frame_loader(N, device='cuda:0', preappend_num=9, maxlen=1):
@@ -895,7 +906,7 @@ def test_mnist_sequence_net(model_path='mnist_resnet18.pth', device='cuda:0', th
     analytical_vals = analytical_values(transition_matrix, gamma, terminal_rows, terminal_values)
 
 
-    test_sequences, test_sequences_1d, test_labels, test_steps, test_states, cumulatives, test_proportion = get_mnist_sequences(20, noise=0.05, seq_noise=0.1, only_even_gets_reward=only_even, preappend_num=preappend_num)
+    test_sequences, test_sequences_1d, test_labels, test_steps, test_states, cumulatives, test_proportion = get_mnist_sequences(10, noise=0.05, seq_noise=0.1, only_even_gets_reward=only_even, preappend_num=preappend_num)
 
     if only_even:
         print("Only even rewards")
@@ -949,42 +960,44 @@ def test_mnist_sequence_net(model_path='mnist_resnet18.pth', device='cuda:0', th
 
     get_stats(predicted_times, stable_certain_times, test_labels, true_pos)
 
-    for i in range(20):
+    for i in range(10):
         plt.figure(1)
-        plt.ylim(-3, 6)
+#        plt.ylim(-3, 6)
+        plt.ylim(-0.5,1.5)
         imageio.mimsave('test_movie.mp4', test_sequences[i], fps=10)
         plt.title("Label: {}".format(test_labels[i]))
 
-        plt.plot(test_steps[i], test_sequences_1d[i], label='Sequence')
-#        plt.title("Sequence")
+#        plt.plot(test_steps[i], test_sequences_1d[i], label='Sequence')
+##        plt.title("Sequence")
 
         true_vals = get_true_plot(test_states[i], test_steps[i], cumulatives[i], analytical_vals)
-        plt.plot(test_steps[i], 5*true_vals, label='Analytical values')
+#        plt.plot(test_steps[i], 5*true_vals, label='Analytical values')
 
 
-#        plt.figure(2)
-#        plt.ylim(-0.5, 1.5)
+##        plt.figure(2)
+##        plt.ylim(-0.5, 1.5)
 
-        predicted_time = get_prediction(test_steps[i][9:], test_predictions[i], threshold=threshold)
-        if predicted_time is not None:
-            plt.vlines(predicted_time, -3, 6, colors='b', label='Predicted')
+#        predicted_time = get_prediction(test_steps[i][9:], test_predictions[i], threshold=threshold)
+#        if predicted_time is not None:
+#            plt.vlines(predicted_time, -3, 6, colors='b', label='Predicted')
 
-        if test_labels[i]:
-            at_least_70_percent = cumulatives[i][-6]
-            earliest_certain = cumulatives[i][-5]
-            stable_certain = cumulatives[i][-4]
-            true_lines = np.array([at_least_70_percent, earliest_certain, stable_certain])
-            plt.vlines(true_lines, -3, 6, linestyles='dashed', colors='r', label='Actual')
+#        if test_labels[i]:
+#            at_least_70_percent = cumulatives[i][-6]
+#            earliest_certain = cumulatives[i][-5]
+#            stable_certain = cumulatives[i][-4]
+#            true_lines = np.array([at_least_70_percent, earliest_certain, stable_certain])
+#            plt.vlines(true_lines, -3, 6, linestyles='dashed', colors='r', label='Actual')
 
-        plt.plot(test_steps[i][9:], 5*test_predictions[i].numpy(), label='Predictions')
+        # Removed the 5x
+        plt.plot(test_steps[i][9:], test_predictions[i].numpy(), label='Predictions')
 
         plt.legend()
         plt.show()
 
-#        input("enter")
+##        input("enter")
 
         plt.close(1)
-#        plt.close(2)
+##        plt.close(2)
 
 
 

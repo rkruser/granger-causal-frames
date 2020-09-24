@@ -29,9 +29,44 @@ transition_matrix_1 = np.array([
   [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000,             0.000 ],  # Terminal zero
   [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,             1.000 ]  # Terminal one
 ])
-state_mapping_1 = np.array([ 0, 1, 2, 3, 4, 5, -1, -2 ])
-terminal_states_1 = np.abs(transition_matrix.diagonal()-1) < 1e-8
+state_mapping_1 = np.array([ 0, 1, 2, 3, 4, 5, -1, -2, 8, 9]) # Come back to the 8,9 later
+terminal_states_1 = np.abs(transition_matrix_1.diagonal()-1) < 1e-8
 terminal_values_1 = np.array([0.0, 1.0])
+
+
+'''
+Rendering functions:
+    For use in artificial sequence generators
+
+'''
+
+def render_sequence_1(states, terminal_label):
+    sequence_values = []
+
+    choice_matrix = [[-1,-1],[-1,1],[1,-1],[1,1]] #Can make this correlate with terminal_label instead
+    choice = np.random.choice(4)
+    feature_label = 1 if choice in [0,3] else 0 #Not linearly separable
+    features = choice_matrix[choice]
+
+    for s in states:
+        sequence_values.append([s]+features)
+
+    feature_labels = np.empty(len(states))
+    feature_labels.fill(feature_label)
+
+    return np.array(sequence_values), feature_labels, feature_label
+
+
+'''
+Artificial sequence labeling functions (like even only, etc.)
+For use in artificial sequence generators
+'''
+def label_sequence_1(states, terminal_label):
+    rewards = np.zeros(len(states))
+    rewards[-1] = terminal_label
+    return rewards
+
+
 
 # For use in derived sequence_object classes
 class MarkovProcess:
@@ -44,18 +79,18 @@ class MarkovProcess:
 #                       feature_constructor = feature_constructor_1,
                        ):
 
-        self.transition_matrix = matrix
         self.transition_matrix = transition_matrix
         self.state_mapping = state_mapping_1
         self.terminal_states = terminal_states
         self.terminal_values = terminal_values
-        self.sequence_render = sequence_render
+        self.sequence_renderer = sequence_render
         self.sequence_labeler = sequence_labeler
 #        self.feature_constructor = feature_constructor_1
 
         self.n_states = len(self.transition_matrix)
         self.state_indices = np.arange(self.n_states, dtype=int)
         self.terminal_state_labels = self.state_indices[self.terminal_states]
+        self.terminal_value_labels = {self.terminal_state_labels[i]:self.terminal_values[i] for i in range(len(self.terminal_values))}
 
     def sample(self):
         states, terminal_label = self.sample_states()
@@ -73,7 +108,7 @@ class MarkovProcess:
             state = np.random.choice(self.n_states, p=self.transition_matrix[state])
             state_sequence.append(state)
 
-        terminal_label = self.terminal_state_labels[state_sequence[-1]]
+        terminal_label = self.terminal_value_labels[state_sequence[-1]]
         mapped_state_sequence = np.array([self.state_mapping[s] for s in state_sequence]) #Map the states
 
         return mapped_state_sequence, terminal_label
@@ -90,28 +125,6 @@ class MnistMarkovProcess:
 
 
 
-'''
-Rendering functions:
-    For use in artificial sequence generators
-
-'''
-
-def render_sequence_1(states, terminal_label):
-    sequence_values = []
-
-    features = np.random.choice()
-    
-    choice_matrix = np.array([[-1,-1],[-1,1],[1,-1],[1,1]]) #Can make this correlate with terminal_label instead
-    choice = np.random.choice(4)
-    feature_label = 1 if choice in [0,3] else 0 #Not linearly separable
-
-    for s in states:
-        sequence_values.append([s]+features)
-
-    feature_labels = np.empty(len(states))
-    feature_labels.fill(feature_label)
-
-    return np.array(sequence_values), feature_labels, feature_label
 
 
 
@@ -120,14 +133,6 @@ def render_mnist_sequence_1(states):
     pass
 
 
-'''
-Artificial sequence labeling functions (like even only, etc.)
-For use in artificial sequence generators
-'''
-def label_sequence_1(states, terminal_label):
-    rewards = np.zeros(len(states))
-    rewards[-1] = terminal_label
-    return rewards
 
 
 
@@ -180,10 +185,10 @@ Collating functions
 '''
 def collatefunc_1(args):
     data = args[0]
-    if len(data[0].shape) == 4:
-        data = torch.stack(data).transpose(0,1)
-    else:
-        data = torch.stack(data)
+#    if len(data[0].shape) == 4:
+    data = torch.stack(data).transpose(0,1)
+#    else:
+#        data = torch.stack(data)
     return [data] + [torch.stack(a) for a in args[1:]]
 
 def collatefunc_2(args):
@@ -276,7 +281,7 @@ class SequenceObject:
     def __next__(self):
         if self.position == self.__len__():
             raise StopIteration
-        end = min(len(self.__len__()), self.position+self.mode.batch_size)
+        end = min(self.__len__(), self.position+self.mode.batch_size)
         batch = [self.__getitem__(k) for k in range(self.position,end)]
         self.position = end
         num_return_seqs = len(batch[0])
@@ -383,8 +388,8 @@ def default_sample_func(*args):
 # Add ability for models to return embeddings
 
 class SequenceSampleDataset:
-    def __init__(self, sequence_dataset, embedding_model=None, sample_func=default_sample_func, collate_fn=collate_func_2, batch_size=64):
-        sampled_sequences = []
+    def __init__(self, sequence_dataset, embedding_model=None, sample_func=default_sample_func, collate_fn=collatefunc_2, batch_size=64):
+        self.sampled_sequences = []
 
 #        self.embedding_model = embedding_model
         self.batch_size = batch_size
@@ -396,7 +401,7 @@ class SequenceSampleDataset:
             seq_labels = []
             if embedding_model is not None:
                 for batch in seq:
-                    seq_embeddings.append(embedding_model.embed(batch[0]))
+                    seq_embeddings.append(embedding_model.embed(batch[0]).detach()) #Should detach
                     seq_labels.append(batch[2]) # batch[2] is conventionally the feature label
             else:
                 for batch in seq:
@@ -405,7 +410,7 @@ class SequenceSampleDataset:
             seq_embeddings = torch.cat(seq_embeddings)
             seq_labels = torch.cat(seq_labels)
 
-            sampled_sequences.append(sample_func(seq_embeddings, seq_labels))
+            self.sampled_sequences.append(sample_func(seq_embeddings, seq_labels))
 
             # Need to do something about labels
 
@@ -419,7 +424,7 @@ class SequenceSampleDataset:
     def __next__(self):
         if self.position == len(self.sampled_sequences):
             raise StopIteration
-        end = min(len(self.sampled_sequences), self.position+self.options.batch_size)
+        end = min(len(self.sampled_sequences), self.position+self.batch_size)
         batch = self.sampled_sequences[self.position:end]
         self.position = end
         num_return_seqs = len(batch[0])
@@ -461,11 +466,11 @@ class SequenceNet(nn.Module):
         return self.prediction_net(x)
 
 
-class LinearParityNet(nn.Module):
-    def __init__(self, input_size=10):
+class LinearNet(nn.Module):
+    def __init__(self, input_features=10):
         super().__init__()
 
-        self.net = nn.Linear(input_size,1)
+        self.net = nn.Linear(input_features,1)
 
     def embed(self, x):
         pass #Not needed
@@ -478,14 +483,14 @@ class LinearParityNet(nn.Module):
 def default_network_constructor(network_type='sequence_net', input_features=10, intermediate_features=256, embedding_features=3):
     if network_type == 'sequence_net':
         return SequenceNet(input_features=input_features, intermediate_features=intermediate_features, embedding_features=embedding_features)
-    elif network_type == 'parity_net':
-        return LinearParityNet(input_features=input_features)
+    elif network_type == 'linear_net':
+        return LinearNet(input_features=input_features)
     else:
         print("Unrecognized network type")
         sys.exit(1)
 
 
-def default_optim_constructor(network, **kwargs)
+def default_optim_constructor(network, **kwargs):
     return torch.optim.Adam(network.parameters(), **kwargs)
 
 
@@ -559,9 +564,9 @@ default_model_config = Namespace(
         save_to = 'model.pth',
         load_from = None,
         network_constructor=default_network_constructor, 
-        network_args={'network_type':'small'}, 
+        network_args={'network_type':'sequence_net'}, 
         optim_constructor=default_optim_constructor, 
-        optim_args={lr=0.0002}, 
+        optim_args={'lr':0.0002}, 
         update_func=q_update, 
         update_cfg = Namespace(rl_gamma=0.997, terminal_weight=1),
         predict_func=predict_batch, 
@@ -581,12 +586,14 @@ class GenericModel:
             self._load()
 
     def _build(self):
-        self.network = cfg.network_constructor(**cfg.network_args)
-        self.device = cfg.device
+        self.network = self.cfg.network_constructor(**self.cfg.network_args)
+        self.device = self.cfg.device
         self.network = self.network.to(self.device)
-        self.optim = cfg.optim_constructor(self.network, **cfg.optim_args) # take network and other args
-        self.update_func = cfg.update_func # take network, optimizer, and data batch, return losses
-        self.predict_func = cfg.predict_func # take network and data batch, return predictions
+        self.optim = self.cfg.optim_constructor(self.network, **self.cfg.optim_args) # take network and other args
+        self.update_func = self.cfg.update_func # take network, optimizer, and data batch, return losses
+        self.predict_func = self.cfg.predict_func # take network and data batch, return predictions
+        self.map_batch_to_device = self.cfg.map_batch_to_device
+        self.embed_func = self.cfg.embed_func
 
     def _load(self):
         with open(self.cfg.load_from, 'rb') as f:
@@ -756,6 +763,153 @@ def test_sequence_dataset():
         print(batch[0].shape)
 
 
+
+
+'''
+Putting it all together
+'''
+
+def experiment_1():
+    n_epochs = 1
+
+    markov_process = MarkovProcess(transition_matrix=transition_matrix_1, 
+                       state_mapping=state_mapping_1,
+                       terminal_states = terminal_states_1,
+                       terminal_values = terminal_values_1,
+                       sequence_render = render_sequence_1,
+                       sequence_labeler = label_sequence_1,
+                       )
+
+    sequence_dataset_options = default_sequence_dataset_options
+    # Adjust values here
+
+
+    sequence_train_mode = Namespace(
+            window_size = 3,
+            return_transitions = True,
+            pad_beginning = True,
+            return_global_label = False,
+            post_transform = postprocess_1,
+            null_transform = nullfunc_1,
+            collate_fn = collatefunc_1,
+            batch_size = 64, # typically unused
+            )
+
+    sequence_test_mode = Namespace(
+            window_size = 3,
+            return_transitions = False,
+            pad_beginning = True,
+            return_global_label = False,
+            post_transform = postprocess_1,
+            null_transform = nullfunc_1,
+            collate_fn = collatefunc_2,
+            batch_size = 64, # typically unused
+            )
+
+    sequence_train_dataset_options = Namespace(
+            sequence_mode = sequence_train_mode,
+            collate_fn = collatefunc_1,
+            batch_size = 64,
+            sample_mode = 'random',
+            preload_num = None,
+            )
+
+    sequence_test_dataset_options = Namespace(
+            sequence_mode = sequence_test_mode,
+            collate_fn = collatefunc_2,
+            batch_size = 64,
+            sample_mode = 'sequential',
+            preload_num = None,
+            )
+
+
+    markov_train_dataset =  MarkovSequenceDataset(1000, markov_process, options=sequence_train_dataset_options)
+    markov_test_dataset =  MarkovSequenceDataset(1000, markov_process, options=sequence_test_dataset_options)
+
+    model_config = Namespace(
+        save_to = 'sequence_model.pth',
+        load_from = None,
+        network_constructor=default_network_constructor, 
+        network_args={'network_type':'sequence_net', 'input_features':9}, 
+        optim_constructor=default_optim_constructor, 
+        optim_args={'lr':0.0002}, 
+        update_func=q_update, 
+        update_cfg = Namespace(rl_gamma=0.977, terminal_weight=1),
+        predict_func=predict_batch, 
+        predict_func_cfg = Namespace(),
+        embed_func=embed_batch,
+        embed_cfg = Namespace(),
+        device='cpu', 
+        map_batch_to_device=default_map_batch_to_device,
+        )
+
+    model = GenericModel(model_config)
+
+    print("Training RL model on markov dataset")
+    train_model_on_dataset(model, markov_train_dataset, print_every=100, save_every = 5, n_epochs=n_epochs)
+    
+    embedding_train_input_sequences = MarkovSequenceDataset(20, markov_process, options=sequence_test_dataset_options)
+    embedding_train_dataset = SequenceSampleDataset(embedding_train_input_sequences, embedding_model=model, sample_func=default_sample_func, 
+                                    collate_fn=collatefunc_2, batch_size=64)
+    non_embedding_train_dataset = SequenceSampleDataset(embedding_train_input_sequences, embedding_model=None, sample_func=default_sample_func, 
+                                    collate_fn=collatefunc_2, batch_size=64)
+    embedding_test_dataset = SequenceSampleDataset(markov_test_dataset, embedding_model=model, sample_func=default_sample_func, 
+                                    collate_fn=collatefunc_2, batch_size=64)
+    non_embedding_test_dataset = SequenceSampleDataset(markov_test_dataset, embedding_model=None, sample_func=default_sample_func, 
+                                    collate_fn=collatefunc_2, batch_size=64)
+
+
+    linear_model_on_embeddings_config = Namespace(
+        save_to = 'linear_model.pth',
+        load_from = None,
+        network_constructor=default_network_constructor, 
+        network_args={'network_type':'linear_net', 'input_features':3}, 
+        optim_constructor=default_optim_constructor, 
+        optim_args={'lr':0.001}, 
+        update_func=q_update, 
+        update_cfg = Namespace(rl_gamma=0.977, terminal_weight=1),
+        predict_func=predict_batch, 
+        predict_func_cfg = Namespace(),
+        embed_func=embed_batch,
+        embed_cfg = Namespace(),
+        device='cpu', 
+        map_batch_to_device=default_map_batch_to_device,
+        )
+
+    linear_model_off_embeddings_config = Namespace(
+        save_to = 'linear_model.pth',
+        load_from = None,
+        network_constructor=default_network_constructor, 
+        network_args={'network_type':'linear_net','input_features':3}, 
+        optim_constructor=default_optim_constructor, 
+        optim_args={'lr':0.001}, 
+        update_func=q_update, 
+        update_cfg = Namespace(rl_gamma=0.977, terminal_weight=1),
+        predict_func=predict_batch, 
+        predict_func_cfg = Namespace(),
+        embed_func=embed_batch,
+        embed_cfg = Namespace(),
+        device='cpu', 
+        map_batch_to_device=default_map_batch_to_device,
+        )
+
+
+    linear_model_on_embeddings = GenericModel(linear_model_on_embeddings_config)
+    linear_model_off_embeddings = GenericModel(linear_model_off_embeddings_config)
+
+    print("Training linear model on embeddings")
+    train_model_on_dataset(linear_model_on_embeddings, embedding_train_dataset, print_every=10, save_every=5, n_epochs=n_epochs)
+    print("Training linear model on raw points")
+    train_model_on_dataset(linear_model_off_embeddings, non_embedding_train_dataset, print_every=10, save_every=5, n_epochs=n_epochs)
+
+    embedding_accuracy = predict_classifier_model_on_dataset(linear_model_on_embeddings, embedding_test_dataset)
+    no_embedding_accuracy = predict_classifier_model_on_dataset(linear_model_off_embeddings, non_embedding_test_dataset)
+
+
+    print("Non-embedding accuracy", no_embedding_accuracy)
+    print("Embedding accuracy", embedding_accuracy)
+
+
 '''
 Run from command line
 '''
@@ -764,14 +918,18 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--test_sequence_object', action='store_true')
     parser.add_argument('--test_sequence_dataset', action='store_true')
+    parser.add_argument('--experiment_1', action='store_true')
     opt = parser.parse_args()
 
     if opt.test_sequence_object:
         print("Testing sequence object")
         test_sequence_object()
-    elif opt.test_sequence_dataset:
+    if opt.test_sequence_dataset:
         print("Testing sequence dataset")
         test_sequence_dataset()
+
+    if opt.experiment_1:
+        experiment_1()
 
 
 
