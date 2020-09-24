@@ -14,10 +14,69 @@ from old_code.video_loader import Zipindexables
 '''
 Artificial sequence generators
 '''
+
+tp = 0.05
+#     0       1     2      3      4      5      6      7      8      9
+transition_matrix_1 = np.array([
+  [ 0.334, 0.333, 0.000, 0.000, 0.000, 0.000, 0.333, 0.000, 0.000, 0.000 ], # 0
+  [ 0.500-tp/2, 0.000, 0.500-tp/2, 0.000, 0.000, 0.000, 0.000, 0.000, tp,      0.000 ], # 1
+  [ 0.000, 0.500-tp/2, 0.000, 0.500-tp/2, 0.000, 0.000, 0.000, 0.000, tp,      0.000 ], # 2
+  [ 0.000, 0.000, 0.300-tp/2, 0.000, 0.700-tp/2, 0.000, 0.000, 0.000, tp,      0.000 ], # 3
+  [ 0.000, 0.000, 0.000, 0.000, 0.000, 1.000, 0.000, 0.000, 0.000,             0.000 ], # 4
+  [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,             1.000 ], # 5 (to terminal 1)
+  [ 0.500-tp/2, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.500-tp/2, tp,      0.000 ], # 6
+  [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000-tp, 0.000, tp,             0.000 ],  # 7
+  [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000,             0.000 ],  # Terminal zero
+  [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,             1.000 ]  # Terminal one
+])
+state_mapping_1 = np.array([ 0, 1, 2, 3, 4, 5, -1, -2 ])
+terminal_states_1 = np.abs(transition_matrix.diagonal()-1) < 1e-8
+terminal_values_1 = np.array([0.0, 1.0])
+
 # For use in derived sequence_object classes
 class MarkovProcess:
-    def __init__(self):
-        pass
+    def __init__(self, transition_matrix=transition_matrix_1, 
+                       state_mapping=state_mapping_1,
+                       terminal_states = terminal_states_1,
+                       terminal_values = terminal_values_1,
+                       sequence_render = render_sequence_1,
+                       sequence_labeler = label_sequence_1,
+#                       feature_constructor = feature_constructor_1,
+                       ):
+
+        self.transition_matrix = matrix
+        self.transition_matrix = transition_matrix
+        self.state_mapping = state_mapping_1
+        self.terminal_states = terminal_states
+        self.terminal_values = terminal_values
+        self.sequence_render = sequence_render
+        self.sequence_labeler = sequence_labeler
+#        self.feature_constructor = feature_constructor_1
+
+        self.n_states = len(self.transition_matrix)
+        self.state_indices = np.arange(self.n_states, dtype=int)
+        self.terminal_state_labels = self.state_indices[self.terminal_states]
+
+    def sample(self):
+        states, terminal_label = self.sample_states()
+        rewards = self.sequence_labeler(states, terminal_label)
+
+        sequence, feature_labels, global_feature_label = self.sequence_renderer(states, terminal_label)
+        global_labels = (terminal_label, global_feature_label)
+        return sequence, rewards, feature_labels, global_labels, states
+
+    def sample_states(self):
+        state = 0
+        state_sequence = [state]
+        
+        while state not in self.terminal_state_labels:
+            state = np.random.choice(self.n_states, p=self.transition_matrix[state])
+            state_sequence.append(state)
+
+        terminal_label = self.terminal_state_labels[state_sequence[-1]]
+        mapped_state_sequence = np.array([self.state_mapping[s] for s in state_sequence]) #Map the states
+
+        return mapped_state_sequence, terminal_label
 
 
 class MnistMarkovProcess:
@@ -29,14 +88,33 @@ class MnistMarkovProcess:
 
 
 
+
+
 '''
 Rendering functions:
     For use in artificial sequence generators
 
 '''
 
-def render_sequence_1(states):
-    pass
+def render_sequence_1(states, terminal_label):
+    sequence_values = []
+
+    features = np.random.choice()
+    
+    choice_matrix = np.array([[-1,-1],[-1,1],[1,-1],[1,1]]) #Can make this correlate with terminal_label instead
+    choice = np.random.choice(4)
+    feature_label = 1 if choice in [0,3] else 0 #Not linearly separable
+
+    for s in states:
+        sequence_values.append([s]+features)
+
+    feature_labels = np.empty(len(states))
+    feature_labels.fill(feature_label)
+
+    return np.array(sequence_values), feature_labels, feature_label
+
+
+
 
 def render_mnist_sequence_1(states):
     pass
@@ -46,8 +124,10 @@ def render_mnist_sequence_1(states):
 Artificial sequence labeling functions (like even only, etc.)
 For use in artificial sequence generators
 '''
-def label_sequence_1(states):
-    pass
+def label_sequence_1(states, terminal_label):
+    rewards = np.zeros(len(states))
+    rewards[-1] = terminal_label
+    return rewards
 
 
 
@@ -67,12 +147,16 @@ Utilities: defined already in another file
 Batch postprocessing functions:
     convert sequence object batches into correct training format, scale properly, etc.
 '''
+
+# Normalize first input
 def postprocess_1(args):
     return [torch.from_numpy(args[0]).float()/255.0] + [torch.from_numpy(np.array(val)).float() for val in args[1:-1]]+[torch.from_numpy(np.array(args[-1]))]
 
-def postprocess_test(args):
+# No normalizing of input here
+def postprocess_2(args):
     return [torch.from_numpy(args[0]).float()] + [torch.from_numpy(np.array(val)).float() for val in args[1:-1]]+[torch.from_numpy(np.array(args[-1]))]
 
+postprocess_test = postprocess_2
 
 '''
 Reward Schemas:
@@ -102,6 +186,9 @@ def collatefunc_1(args):
         data = torch.stack(data)
     return [data] + [torch.stack(a) for a in args[1:]]
 
+def collatefunc_2(args):
+    return [torch.stack(a) for a in args]
+
 
 '''
 Sequence objects
@@ -114,6 +201,7 @@ default_sequence_mode = Namespace(
         return_global_label = False,
         post_transform = postprocess_1,
         null_transform = nullfunc_1,
+        collate_fn = collatefunc_1,
         batch_size = 64, # typically unused
         )
 
@@ -179,13 +267,21 @@ class SequenceObject:
 
 
     def get_full_sequence(self):
-        pass
+        return self.sequences
 
     def __iter__(self):
-        pass
+        self.position = 0
+        return self
 
     def __next__(self):
-        pass
+        if self.position == self.__len__():
+            raise StopIteration
+        end = min(len(self.__len__()), self.position+self.mode.batch_size)
+        batch = [self.__getitem__(k) for k in range(self.position,end)]
+        self.position = end
+        num_return_seqs = len(batch[0])
+        return_seqs = [ [t[i] for t in batch] for i in range(num_return_seqs) ]
+        return self.mode.collate_fn(return_seqs)
 
     # Used for parallel preloading and such
     def _load(self):
@@ -267,6 +363,71 @@ class SequenceDataset:
 
 
 
+class MarkovSequenceDataset(SequenceDataset):
+    def __init__(self, n_sequences, markov_process, options=default_sequence_dataset_options):
+        sequence_objects = []
+        for i in range(n_sequences):
+            sequence, rewards, feature_labels, global_labels, states = markov_process.sample()
+            seq_obj = SequenceObject(sequence, rewards, feature_labels, states, global_label=global_labels, mode=options.sequence_mode)
+            sequence_objects.append(seq_obj)
+
+        super().__init__(sequence_objects, options=options)
+
+
+
+
+def default_sample_func(*args):
+    return [ a[-1] for a in args ]
+
+# For getting single points from a sequence dataset
+# Add ability for models to return embeddings
+
+class SequenceSampleDataset:
+    def __init__(self, sequence_dataset, embedding_model=None, sample_func=default_sample_func, collate_fn=collate_func_2, batch_size=64):
+        sampled_sequences = []
+
+#        self.embedding_model = embedding_model
+        self.batch_size = batch_size
+        self.collate_fn = collate_fn
+
+        for i in range(sequence_dataset.num_sequences()):
+            seq = sequence_dataset.get_sequence(i)
+            seq_embeddings = []
+            seq_labels = []
+            if embedding_model is not None:
+                for batch in seq:
+                    seq_embeddings.append(embedding_model.embed(batch[0]))
+                    seq_labels.append(batch[2]) # batch[2] is conventionally the feature label
+            else:
+                for batch in seq:
+                    seq_embeddings.append(batch[0])
+                    seq_labels.append(batch[2]) 
+            seq_embeddings = torch.cat(seq_embeddings)
+            seq_labels = torch.cat(seq_labels)
+
+            sampled_sequences.append(sample_func(seq_embeddings, seq_labels))
+
+            # Need to do something about labels
+
+#        self.sampled_sequences = torch.stack(sampled_sequences)
+#        self.sampled_labels = None # Need to write this
+
+    def __iter__(self):
+        self.position = 0
+        return self
+
+    def __next__(self):
+        if self.position == len(self.sampled_sequences):
+            raise StopIteration
+        end = min(len(self.sampled_sequences), self.position+self.options.batch_size)
+        batch = self.sampled_sequences[self.position:end]
+        self.position = end
+        num_return_seqs = len(batch[0])
+        return_seqs = [ [t[i] for t in batch] for i in range(num_return_seqs) ]
+        return self.collate_fn(return_seqs)
+
+
+
 # Derive various types of sequence dataset here that load videos or something
 
 
@@ -277,22 +438,180 @@ class SequenceDataset:
 
 
 '''
+Model functions
+'''
+
+class SequenceNet(nn.Module):
+    def __init__(self, input_features=10, intermediate_features=256, embedding_features=3):
+        super().__init__()
+
+        self.embedding_net = nn.Sequential(
+                nn.Linear(input_features, intermediate_features),
+                nn.ReLU(),
+                nn.Linear(intermediate_features, embedding_features)
+                )
+        self.prediction_net = nn.Linear(embedding_features, 1)
+
+    def embed(self, x):
+        return self.embedding_net(x)
+
+    def forward(self, x):
+        x = x.view(len(x),-1)
+        x = self.embed(x)
+        return self.prediction_net(x)
+
+
+class LinearParityNet(nn.Module):
+    def __init__(self, input_size=10):
+        super().__init__()
+
+        self.net = nn.Linear(input_size,1)
+
+    def embed(self, x):
+        pass #Not needed
+
+    def forward(self, x):
+        x = x.view(len(x),-1)
+        return self.net(x)
+
+
+def default_network_constructor(network_type='sequence_net', input_features=10, intermediate_features=256, embedding_features=3):
+    if network_type == 'sequence_net':
+        return SequenceNet(input_features=input_features, intermediate_features=intermediate_features, embedding_features=embedding_features)
+    elif network_type == 'parity_net':
+        return LinearParityNet(input_features=input_features)
+    else:
+        print("Unrecognized network type")
+        sys.exit(1)
+
+
+def default_optim_constructor(network, **kwargs)
+    return torch.optim.Adam(network.parameters(), **kwargs)
+
+
+def default_map_batch_to_device(batch, device):
+    if isinstance(batch, torch.Tensor):
+        return batch.to(device)
+    elif isinstance(batch, tuple) or isinstance(batch, list):
+        converted = []
+        for b in batch:
+            converted.append(default_map_batch_to_device(b, device))
+        return type(batch)(converted)
+    else:
+        return batch
+
+
+def q_loss(q_current, q_future, weights):
+    diff = q_future-q_current
+    loss = (weights*(diff**2)).mean()
+    return loss
+
+def prob_loss(predictions, actual):
+    return nn.functional.binary_cross_entropy_with_logits(predictions, actual)
+
+def q_update(network, optim, batch, cfg):
+    x, r, terminal = batch[0], batch[1], batch[-1] #convention: the last thing in the batch is the terminal labels
+    x_current = x[0]
+    x_future = x[1]
+
+    q_current = network(x_current).squeeze(1)
+
+    weights = torch.ones(len(x_current), device=x_current.device)
+    with torch.no_grad():
+        weights[terminal] = cfg.terminal_weight
+        future_preds = network(x_future).squeeze(1)
+        future_preds[terminal] = 0
+        q_future = cfg.rl_gamma*future_preds+r
+    
+    loss = q_loss(q_current, q_future, weights)
+    
+    network.zero_grad()
+    loss.backward()
+    optim.step()
+
+    return loss.item()
+
+def prob_update(network, optim, batch, cfg):
+    x, y = batch[0], batch[1]
+    predictions = network(x).squeeze(1)
+    loss = prob_loss(predictions, y)
+    network.zero_grad()
+    loss.backward()
+    optim.step()
+
+    return loss.item()
+
+def predict_batch(network, x, cfg):
+#    x, y = batch[0], batch[1]
+    predictions = network(x).squeeze(1)
+    return predictions
+
+def embed_batch(network, x, cfg):
+    embeddings = network.embed(x)
+    return embeddings
+
+'''
 Generic models:
     Take neural nets, optimizer settings, loss settings, and track them
 '''
 
-class GenericModel(nn.Module):
-    def __init__(self, network_constructor, network_args, optim_construct, optim_args, apply_func, update_func, device, savename):
-        pass
+default_model_config = Namespace(
+        save_to = 'model.pth',
+        load_from = None,
+        network_constructor=default_network_constructor, 
+        network_args={'network_type':'small'}, 
+        optim_constructor=default_optim_constructor, 
+        optim_args={lr=0.0002}, 
+        update_func=q_update, 
+        update_cfg = Namespace(rl_gamma=0.997, terminal_weight=1),
+        predict_func=predict_batch, 
+        predict_func_cfg = Namespace(),
+        embed_func=embed_batch,
+        embed_cfg = Namespace(),
+        device='cuda:0', 
+        map_batch_to_device=default_map_batch_to_device,
+        )
 
-    def update(self, *args):
-        pass
+
+class GenericModel:
+    def __init__(self, cfg):
+        self.cfg = cfg # contains savename and everything else
+        self._build()
+        if self.cfg.load_from is not None:
+            self._load()
+
+    def _build(self):
+        self.network = cfg.network_constructor(**cfg.network_args)
+        self.device = cfg.device
+        self.network = self.network.to(self.device)
+        self.optim = cfg.optim_constructor(self.network, **cfg.optim_args) # take network and other args
+        self.update_func = cfg.update_func # take network, optimizer, and data batch, return losses
+        self.predict_func = cfg.predict_func # take network and data batch, return predictions
+
+    def _load(self):
+        with open(self.cfg.load_from, 'rb') as f:
+            print("Loading model from", self.cfg.load_from)
+            params = torch.load(f, map_location=self.cfg.device)
+            self.network.load_state_dict(params['network_state_dict'])
+            self.optimizer.load_state_dict(params['optimizer_state_dict'])
 
     def save(self):
-        pass
+        with open(self.cfg.save_to, 'wb') as f:
+            torch.save({'network_state_dict':self.network.state_dict(), 'optimizer_state_dict':self.optim.state_dict()}, f)
 
-    def load(self):
-        pass
+    def update(self, batch):
+        batch = self.map_batch_to_device(batch, self.device)
+        return self.update_func(self.network, self.optim, batch, self.cfg.update_cfg)
+
+    def embed(self, batch):
+        batch = self.map_batch_to_device(batch, self.device)
+        return self.embed_func(self.network, batch, self.cfg.embed_cfg)
+
+    def predict(self, batch):
+        batch = self.map_batch_to_device(batch, self.device)
+        return self.predict_func(self.network, batch, self.cfg.predict_func_cfg)
+
+
 
 
 # For later extension to LSTMs
@@ -300,8 +619,7 @@ class GenericRecurrentModel(GenericModel):
     pass
 
 
-# For simple linear classifiers and such
-class GenericSimpleModel:
+# For simple linear classifiers and such class GenericSimpleModel:
     pass
 
 
@@ -337,6 +655,57 @@ Training, testing, metric extraction, progress saving
 Plotting, results viewing, results saving
 
 '''
+def update_model_on_dataset(model, dataset, print_every=100):
+    losses = []
+    for i, batch in enumerate(dataset):
+        loss = model.update(batch)
+        losses.append(loss)
+        if (i+1)%print_every == 0:
+            print("Iteration {0}, average_loss {1}".format(i+1, np.mean(losses)))
+
+    return losses
+
+def train_model_on_dataset(model, dataset, print_every=100, save_every = 5, n_epochs=100):
+    for epoch in range(n_epochs):
+        print("Epoch", epoch)
+        update_model_on_dataset(model,dataset, print_every=print_every)
+
+        if (epoch+1)%save_every == 0:
+            print("Saving")
+            model.save()
+
+    print("Saving final")
+    model.save()
+
+
+def predict_classifier_model_on_dataset(model, dataset):
+    total = 0
+    num = 0
+    for batch in dataset:
+        predictions = model.predict(batch[0]).to('cpu').detach().numpy()
+        y = batch[1]
+        accuracy = ((predictions > 0) == (y > 0.5)).float().mean()
+        totals += accuracy*len(y)
+        num += len(y)
+
+    total_accuracy = total/num
+    return total_accuracy
+
+
+
+def predict_sequence_model_on_dataset(model, dataset, sequence_score_func):
+    all_predictions = []
+    all_scores = []
+    for i in range(dataset.num_sequences()):
+        seq = dataset.get_sequence(i)
+        seq_predictions = []
+        for batch in seq:
+            predictions = model.predict(batch[0]).to('cpu').detach().numpy()
+        seq_predictions = np.concatenate(seq_predictions)
+        all_predictions.append(seq_predictions)
+        all_scores.append(sequence_score_func(seq_predictions, seq.global_label))
+
+    return all_predictions, all_scores
 
 
 
