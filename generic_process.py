@@ -57,6 +57,31 @@ def render_sequence_1(states, terminal_label):
     return np.array(sequence_values), feature_labels, feature_label
 
 
+
+def render_sequence_2(states, terminal_label):
+    sequence_values = []
+
+    choice_matrix = [[-1,-1],[-1,1],[1,-1],[1,1]] #Can make this correlate with terminal_label instead
+#    choice = np.random.choice(4)
+    if terminal_label == 1:
+        choice = np.random.choice(4, p=[0.4, 0.1, 0.1, 0.4])
+    else:
+        choice = np.random.choice(4, p=[0.1, 0.4, 0.4, 0.1])
+    feature_label = 1 if choice in [0,3] else 0 #Not linearly separable
+    features = choice_matrix[choice]
+
+    for s in states:
+        sequence_values.append([s]+features)
+
+    feature_labels = np.empty(len(states))
+    feature_labels.fill(feature_label)
+
+    return np.array(sequence_values), feature_labels, feature_label
+
+
+
+
+
 '''
 Artificial sequence labeling functions (like even only, etc.)
 For use in artificial sequence generators
@@ -67,7 +92,6 @@ def label_sequence_1(states, terminal_label):
     return rewards
 
 
-
 # For use in derived sequence_object classes
 class MarkovProcess:
     def __init__(self, transition_matrix=transition_matrix_1, 
@@ -76,6 +100,7 @@ class MarkovProcess:
                        terminal_values = terminal_values_1,
                        sequence_render = render_sequence_1,
                        sequence_labeler = label_sequence_1,
+                       random_terminal=False,
 #                       feature_constructor = feature_constructor_1,
                        ):
 
@@ -85,6 +110,7 @@ class MarkovProcess:
         self.terminal_values = terminal_values
         self.sequence_renderer = sequence_render
         self.sequence_labeler = sequence_labeler
+        self.random_terminal = random_terminal
 #        self.feature_constructor = feature_constructor_1
 
         self.n_states = len(self.transition_matrix)
@@ -108,7 +134,11 @@ class MarkovProcess:
             state = np.random.choice(self.n_states, p=self.transition_matrix[state])
             state_sequence.append(state)
 
-        terminal_label = self.terminal_value_labels[state_sequence[-1]]
+        if self.random_terminal:
+            terminal_label = np.random.choice([0.0,1.0])
+        else:
+            terminal_label = self.terminal_value_labels[state_sequence[-1]]
+
         mapped_state_sequence = np.array([self.state_mapping[s] for s in state_sequence]) #Map the states
 
         return mapped_state_sequence, terminal_label
@@ -690,9 +720,9 @@ def predict_classifier_model_on_dataset(model, dataset):
     num = 0
     for batch in dataset:
         predictions = model.predict(batch[0]).to('cpu').detach().numpy()
-        y = batch[1]
-        accuracy = ((predictions > 0) == (y > 0.5)).float().mean()
-        totals += accuracy*len(y)
+        y = batch[1].to('cpu').detach().numpy()
+        accuracy = ((predictions > 0) == (y > 0.5)).mean() #.float().mean()
+        total += accuracy*len(y)
         num += len(y)
 
     total_accuracy = total/num
@@ -770,14 +800,15 @@ Putting it all together
 '''
 
 def experiment_1():
-    n_epochs = 1
+    n_epochs = 30
 
     markov_process = MarkovProcess(transition_matrix=transition_matrix_1, 
                        state_mapping=state_mapping_1,
                        terminal_states = terminal_states_1,
                        terminal_values = terminal_values_1,
-                       sequence_render = render_sequence_1,
+                       sequence_render = render_sequence_2,
                        sequence_labeler = label_sequence_1,
+                       random_terminal=True,
                        )
 
     sequence_dataset_options = default_sequence_dataset_options
@@ -827,7 +858,7 @@ def experiment_1():
     markov_test_dataset =  MarkovSequenceDataset(1000, markov_process, options=sequence_test_dataset_options)
 
     model_config = Namespace(
-        save_to = 'sequence_model.pth',
+        save_to = 'sequence_model_render_2_random_terminal.pth',
         load_from = None,
         network_constructor=default_network_constructor, 
         network_args={'network_type':'sequence_net', 'input_features':9}, 
@@ -848,7 +879,7 @@ def experiment_1():
     print("Training RL model on markov dataset")
     train_model_on_dataset(model, markov_train_dataset, print_every=100, save_every = 5, n_epochs=n_epochs)
     
-    embedding_train_input_sequences = MarkovSequenceDataset(20, markov_process, options=sequence_test_dataset_options)
+    embedding_train_input_sequences = MarkovSequenceDataset(50, markov_process, options=sequence_test_dataset_options)
     embedding_train_dataset = SequenceSampleDataset(embedding_train_input_sequences, embedding_model=model, sample_func=default_sample_func, 
                                     collate_fn=collatefunc_2, batch_size=64)
     non_embedding_train_dataset = SequenceSampleDataset(embedding_train_input_sequences, embedding_model=None, sample_func=default_sample_func, 
@@ -860,13 +891,13 @@ def experiment_1():
 
 
     linear_model_on_embeddings_config = Namespace(
-        save_to = 'linear_model.pth',
+        save_to = 'linear_model_on_embeddings_render_2_random_terminal.pth',
         load_from = None,
         network_constructor=default_network_constructor, 
         network_args={'network_type':'linear_net', 'input_features':3}, 
         optim_constructor=default_optim_constructor, 
         optim_args={'lr':0.001}, 
-        update_func=q_update, 
+        update_func=prob_update, 
         update_cfg = Namespace(rl_gamma=0.977, terminal_weight=1),
         predict_func=predict_batch, 
         predict_func_cfg = Namespace(),
@@ -877,13 +908,13 @@ def experiment_1():
         )
 
     linear_model_off_embeddings_config = Namespace(
-        save_to = 'linear_model.pth',
+        save_to = 'linear_model_off_embeddings_render_2_random_terminal.pth',
         load_from = None,
         network_constructor=default_network_constructor, 
-        network_args={'network_type':'linear_net','input_features':3}, 
+        network_args={'network_type':'linear_net','input_features':9}, 
         optim_constructor=default_optim_constructor, 
         optim_args={'lr':0.001}, 
-        update_func=q_update, 
+        update_func=prob_update, 
         update_cfg = Namespace(rl_gamma=0.977, terminal_weight=1),
         predict_func=predict_batch, 
         predict_func_cfg = Namespace(),
@@ -961,7 +992,9 @@ if __name__ == '__main__':
 
 
 
+# Results:
 
+# Reward unrelated to secondary label: both linear accuracies 0.5
 
 
 

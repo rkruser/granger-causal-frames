@@ -46,6 +46,7 @@ def get_stats(predicted, actual_labels, actual_times, name):
     print("Num positive correct:", inds.sum())
     diffs = predicted[inds] - actual_times[inds] # Negative = predicted in advance, Positive = predicted afterward
     print(diffs)
+    print("Number identified in advance:", (diffs < 0).sum())
     print("Mean", diffs.mean())
     print("Median", np.median(diffs))
     print("Std", diffs.std())
