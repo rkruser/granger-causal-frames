@@ -28,9 +28,9 @@ transition_matrix_1 = np.array([
   [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 1.000,             0.000 ],  # Terminal zero
   [ 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,             1.000 ]  # Terminal one
 ])
-state_mapping_1 = np.array([ 0, 1, 2, 3, 4, 5, -1, -2, 8, 9]) # Come back to the 8,9 later
-terminal_states_1 = np.abs(transition_matrix_1.diagonal()-1) < 1e-8
-terminal_values_1 = np.array([0.0, 1.0])
+state_mapping_1 = np.array([ 0, 1, 2, 3, 4, 5, -1, -2, 8, 9]) 
+terminal_states_1 = np.arange(len(transition_matrix_1),dtype=int)[np.abs(transition_matrix_1.diagonal()-1) < 1e-8]
+rewards_1 = np.array([0.0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
 
 
 '''
@@ -104,8 +104,8 @@ This defines a markov state-transition process.
 
 transition_matrix : A 2D numpy array whose values are transition probabilities between states represented by rows/cols
 state_mapping : A numpy array that maps abstract markov states (0-N) to specific real-number (or possible vector) values.
-terminal_states : A boolean numpy array that indicates which states are terminal.
-terminal_values : A numpy array whose length is the number of terminal states, and whose values are the rewards given by those terminal states.
+terminal_states : A numpy array listing the terminal states
+rewards : A numpy array giving the rewards for each state
 sequence_render : A function which takes a list of state values and a label and returns a time series based on the state sequence (in the simplest case, can trivially return the state sequence itself).
 sequence_labeler : A function that takes a list of values and a label and returns the rewards at each state (usually mostly zero).
 random_terminal : A boolean indicating whether the given sequence should be randomly assigned a terminal label.
@@ -114,26 +114,22 @@ class MarkovProcess:
     def __init__(self, transition_matrix=transition_matrix_1, 
                        state_mapping=state_mapping_1,
                        terminal_states = terminal_states_1,
-                       terminal_values = terminal_values_1,
+                       rewards = rewards_1,
                        sequence_render = render_sequence_1,
                        sequence_labeler = label_sequence_1,
                        random_terminal=False,
-#                       feature_constructor = feature_constructor_1,
                        ):
 
         self.transition_matrix = transition_matrix
         self.state_mapping = state_mapping_1
         self.terminal_states = terminal_states
-        self.terminal_values = terminal_values
+        self.rewards = rewards
         self.sequence_renderer = sequence_render
         self.sequence_labeler = sequence_labeler
         self.random_terminal = random_terminal
-#        self.feature_constructor = feature_constructor_1
 
         self.n_states = len(self.transition_matrix)
         self.state_indices = np.arange(self.n_states, dtype=int)
-        self.terminal_state_labels = self.state_indices[self.terminal_states]
-        self.terminal_value_labels = {self.terminal_state_labels[i]:self.terminal_values[i] for i in range(len(self.terminal_values))}
 
 
     '''
@@ -141,7 +137,7 @@ class MarkovProcess:
       sequence : A numpy array of the rendered sequence
       rewards : An array giving the rewards at each state in the sequence
       feature_labels : An array giving the labels of the hidden features, if this is applicable
-      global_labels : The label of the entire sequence
+      global_labels : Tuple of the different labels for the entire sequence; (terminal label, feature label)
       states : The abstract markov states corresponding to the sequence (may have different length than the sequence, as the sequence may be much expanded).
     '''
     def sample(self):
@@ -160,49 +156,19 @@ class MarkovProcess:
         state = 0
         state_sequence = [state]
         
-        while state not in self.terminal_state_labels:
+        while state not in self.terminal_states:
             state = np.random.choice(self.n_states, p=self.transition_matrix[state])
             state_sequence.append(state)
 
         if self.random_terminal:
             terminal_label = np.random.choice([0.0,1.0])
         else:
-            terminal_label = self.terminal_value_labels[state_sequence[-1]]
+            terminal_label = self.rewards[state_sequence[-1]]
 
         mapped_state_sequence = np.array([self.state_mapping[s] for s in state_sequence]) #Map the states
 
         return mapped_state_sequence, terminal_label
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def render_mnist_sequence_1(states):
-    pass
-
-
-class MnistMarkovProcess:
-    def __init__(self):
-        pass
 
 
 
@@ -226,7 +192,6 @@ class MarkovSequenceDataset(SequenceDataset):
 
 
 
-
 def test1():
     mp = MarkovProcess()
 
@@ -240,9 +205,6 @@ def test1():
         print("----------------")
 
 
-def post_transform_test(x):
-    return x
-
 def test2():
     mp = MarkovProcess()
     
@@ -251,8 +213,7 @@ def test2():
 
     seq_mode = copy(default_sequence_mode)
     seq_mode.window_size = 1
-    seq_mode.post_transform = post_transform_test,
-    seq_mode.post_transform = seq_mode.post_transform[0]
+    seq_mode.post_transform = lambda x : x
     dset_mode = copy(default_sequence_dataset_options)
     dset_mode.sequence_mode = seq_mode
 
