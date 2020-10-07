@@ -47,6 +47,10 @@ sequence_values : An array of the rendered values
 feature_labels : An array the length of the returned sequence filled with the constant feature label.
 feature_label : The constant feature label
 '''
+
+
+null_object_1 = np.array([0.0, 0, 0])
+
 def render_sequence_1(states, terminal_label):
     sequence_values = []
 
@@ -181,13 +185,10 @@ class MarkovSequenceDataset(SequenceDataset):
         sequence_objects = []
         for i in range(n_sequences):
             sequence, rewards, feature_labels, global_labels, states = markov_process.sample()
-            seq_obj = SequenceObject(sequence, rewards, feature_labels, states, global_label=global_labels, mode=options.sequence_mode)
+            seq_obj = SequenceObject(sequence, rewards, feature_labels, states, global_label=global_labels, null_object=null_object_1, mode=options.sequence_mode)
             sequence_objects.append(seq_obj)
 
         super().__init__(sequence_objects, options=options)
-
-
-
 
 
 
@@ -212,7 +213,8 @@ def test2():
 
 
     seq_mode = copy(default_sequence_mode)
-    seq_mode.window_size = 1
+    seq_mode.window_size = 3
+    seq_mode.pad_beginning = True
     seq_mode.post_transform = lambda x : x
     dset_mode = copy(default_sequence_dataset_options)
     dset_mode.sequence_mode = seq_mode

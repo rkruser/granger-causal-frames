@@ -151,13 +151,13 @@ default_sequence_mode = Namespace(
         pad_beginning = True,
         return_global_label = False,
         post_transform = postprocess_1,
-        null_transform = nullfunc_1,
+#        null_transform = nullfunc_1,
         collate_fn = collatefunc_1,
         batch_size = 64, # typically unused
         )
 
 class SequenceObject:
-    def __init__(self, *args, global_label=None, mode=default_sequence_mode):
+    def __init__(self, *args, global_label=None, null_object=None, mode=default_sequence_mode):
         assert(len(args) > 0)
         assert(len(args[0]) > 0)
         for a in args:
@@ -166,11 +166,12 @@ class SequenceObject:
         self._sequence_length = len(args[0])
         self.sequences = args
         self.global_label = global_label,
+        self.null_object = null_object
         self.set_mode(mode)
 
     def set_mode(self, mode):
         self.mode = mode
-        self.null_object = self.mode.null_transform(np.array(self.sequences[0][0])) # This is stored redundantly across objects; fix later
+#        self.null_object = self.mode.null_transform(np.array(self.sequences[0][0])) # This is stored redundantly across objects; fix later
 
     def __len__(self):
         if self.mode.pad_beginning:
