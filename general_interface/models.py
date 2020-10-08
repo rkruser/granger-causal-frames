@@ -21,7 +21,7 @@ def default_map_batch_to_device(batch, device):
 
 
 class SequenceNet(nn.Module):
-    def __init__(self, input_features=10, intermediate_features=256, embedding_features=3):
+    def __init__(self, input_features=3, intermediate_features=256, embedding_features=3):
         super().__init__()
 
         self.embedding_net = nn.Sequential(
@@ -41,7 +41,7 @@ class SequenceNet(nn.Module):
 
 
 class LinearNet(nn.Module):
-    def __init__(self, input_features=10):
+    def __init__(self, input_features=3):
         super().__init__()
 
         self.net = nn.Linear(input_features,1)
@@ -54,7 +54,7 @@ class LinearNet(nn.Module):
         return self.net(x)
 
 
-def default_network_constructor(network_type='sequence_net', input_features=10, intermediate_features=256, embedding_features=3):
+def default_network_constructor(network_type='sequence_net', input_features=3, intermediate_features=256, embedding_features=3):
     if network_type == 'sequence_net':
         return SequenceNet(input_features=input_features, intermediate_features=intermediate_features, embedding_features=embedding_features)
     elif network_type == 'linear_net':
