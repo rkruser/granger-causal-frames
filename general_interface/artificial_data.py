@@ -9,6 +9,8 @@ import argparse
 
 from loading_utils import *
 
+import matplotlib.pyplot as plt
+
 from copy import copy
 
 '''
@@ -340,6 +342,40 @@ class MarkovProcess:
 
 
 
+
+
+
+def visualize_markov_sequence(all_states, state_values, predicted_values=None, title='Markov process state values'):
+    if predicted_values is None:
+        bar_names = [str(s) for s in all_states]
+        bar_pos = [i for i, _ in enumerate(bar_names)]
+
+        plt.barh(bar_pos, state_values)
+        plt.title(title)
+        plt.ylabel('State')
+        plt.xlabel('Value')
+        plt.yticks(bar_pos, bar_names)
+
+        plt.show()
+
+    else:
+        bar_names = [str(s) for s in all_states]
+        bar_pos = np.arange(len(bar_names))
+        width=0.35
+        
+        plt.barh(bar_pos, state_values, width, label='Analytical Values')
+        plt.barh(bar_pos+width, predicted_values, width, label='Predicted values')
+        plt.title(title)
+        plt.ylabel('State')
+        plt.xlabel('Value')
+        plt.legend(loc='best')
+        plt.yticks(bar_pos+width/2, bar_names)
+
+        plt.show()
+
+
+
+
 '''
 A derived class of SequenceDataset that constructs a dataset by sampling n_sequences from the given markov_process, creating SequenceObjects out of each sequence (initialized using options.sequence_mode), then initializing the underlying SequenceDataset using these objects and the given options.
 '''
@@ -413,12 +449,18 @@ def test4():
     print("MP1:", combos1, vals1)
     print("MP2:", combos2, vals2)
 
+def test5():
+    mp = MarkovProcess(renderer=feature_renderer_2)
+    combos, vals = mp.get_all_states_and_values(0.977)
+    visualize_markov_sequence(combos, vals, predicted_values=vals)
+
 
 if __name__ == '__main__':
 #    test1()
 #    test2()
 #    test3()
-    test4()
+#    test4()
+    test5()
 
 
 
