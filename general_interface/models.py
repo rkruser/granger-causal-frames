@@ -1,4 +1,4 @@
-import torch 
+import torch
 import torch.nn as nn
 import os
 import sys
@@ -53,12 +53,32 @@ class LinearNet(nn.Module):
         x = x.view(len(x),-1)
         return self.net(x)
 
+class LstmNet(nn.Module):
+    def __init__(self, input_features=3, intermediate_features=256, embedding_features=3):
+        super().__init__()
+
+        self.lstm = nn.LSTM(input_features, intermediate_features, 3, batch_first=True)
+        self.embedding_net = nn.Linear(intermediate_features, embedding_features)
+        self.prediction_net = nn.Linear(embedding_features, 1)
+
+    def embed(self, x):
+        x, _ = self.lstm(x)
+        x = x[-1,:]
+        return self.embedding_net(x)
+
+    def forward(self, x):
+        x, _ = self.lstm(x)
+        x = x[-1,:]
+        x = self.embedding_net(x)
+        return self.prediction_net(x)
 
 def default_network_constructor(network_type='sequence_net', input_features=3, intermediate_features=256, embedding_features=3):
     if network_type == 'sequence_net':
         return SequenceNet(input_features=input_features, intermediate_features=intermediate_features, embedding_features=embedding_features)
     elif network_type == 'linear_net':
         return LinearNet(input_features=input_features)
+    elif network_type == 'lstm_net':
+        return LstmNet(input_features=input_features, intermediate_features=intermediate_features, embedding_features=embedding_features)
     else:
         print("Unrecognized network type")
         sys.exit(1)
@@ -91,9 +111,9 @@ def q_update(network, optim, batch, cfg):
         future_preds = network(x_future).squeeze(1)
         future_preds[terminal] = 0
         q_future = cfg.rl_gamma*future_preds+r
-    
+
     loss = q_loss(q_current, q_future, weights)
-    
+
     network.zero_grad()
     loss.backward()
     optim.step()
@@ -127,17 +147,17 @@ Generic models:
 default_model_config = Namespace(
         save_to = 'model.pth',
         load_from = None,
-        network_constructor=default_network_constructor, 
-        network_args={'network_type':'sequence_net'}, 
-        optim_constructor=default_optim_constructor, 
-        optim_args={'lr':0.0002}, 
-        update_func=q_update, 
+        network_constructor=default_network_constructor,
+        network_args={'network_type':'sequence_net'},
+        optim_constructor=default_optim_constructor,
+        optim_args={'lr':0.0002},
+        update_func=q_update,
         update_cfg = Namespace(rl_gamma=0.997, terminal_weight=1),
-        predict_func=predict_batch, 
+        predict_func=predict_batch,
         predict_func_cfg = Namespace(),
         embed_func=embed_batch,
         embed_cfg = Namespace(),
-        device='cuda:0', 
+        device='cuda:0',
         map_batch_to_device=default_map_batch_to_device,
         )
 
@@ -251,4 +271,3 @@ def predict_sequence_model_on_dataset(model, dataset, sequence_score_func):
         all_scores.append(sequence_score_func(seq_predictions, seq.global_label))
 
     return all_predictions, all_scores
-

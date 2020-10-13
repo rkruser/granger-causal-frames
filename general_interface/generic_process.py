@@ -1,4 +1,4 @@
-import torch 
+import torch
 import torch.nn as nn
 import os
 import sys
@@ -30,7 +30,7 @@ def test_sequence_object():
 #    mode.
     s = SequenceObject(seq, seq2, mode=mode)
 
-    
+
     print(len(s))
     for i in range(len(s)):
         print(s[i])
@@ -69,7 +69,7 @@ Putting it all together
 def experiment_1():
     n_epochs = 30
 
-    markov_process = MarkovProcess(transition_matrix=transition_matrix_1, 
+    markov_process = MarkovProcess(transition_matrix=transition_matrix_1,
                        state_mapping=state_mapping_1,
                        terminal_states = terminal_states_1,
                        terminal_values = terminal_values_1,
@@ -127,17 +127,17 @@ def experiment_1():
     model_config = Namespace(
         save_to = 'sequence_model_render_2_random_terminal.pth',
         load_from = None,
-        network_constructor=default_network_constructor, 
-        network_args={'network_type':'sequence_net', 'input_features':9}, 
-        optim_constructor=default_optim_constructor, 
-        optim_args={'lr':0.0002}, 
-        update_func=q_update, 
+        network_constructor=default_network_constructor,
+        network_args={'network_type':'sequence_net', 'input_features':9},
+        optim_constructor=default_optim_constructor,
+        optim_args={'lr':0.0002},
+        update_func=q_update,
         update_cfg = Namespace(rl_gamma=0.977, terminal_weight=1),
-        predict_func=predict_batch, 
+        predict_func=predict_batch,
         predict_func_cfg = Namespace(),
         embed_func=embed_batch,
         embed_cfg = Namespace(),
-        device='cpu', 
+        device='cpu',
         map_batch_to_device=default_map_batch_to_device,
         )
 
@@ -145,49 +145,49 @@ def experiment_1():
 
     print("Training RL model on markov dataset")
     train_model_on_dataset(model, markov_train_dataset, print_every=100, save_every = 5, n_epochs=n_epochs)
-    
+
     embedding_train_input_sequences = MarkovSequenceDataset(50, markov_process, options=sequence_test_dataset_options)
-    embedding_train_dataset = SequenceSampleDataset(embedding_train_input_sequences, embedding_model=model, sample_func=default_sample_func, 
+    embedding_train_dataset = SequenceSampleDataset(embedding_train_input_sequences, embedding_model=model, sample_func=default_sample_func,
                                     collate_fn=collatefunc_2, batch_size=64)
-    non_embedding_train_dataset = SequenceSampleDataset(embedding_train_input_sequences, embedding_model=None, sample_func=default_sample_func, 
+    non_embedding_train_dataset = SequenceSampleDataset(embedding_train_input_sequences, embedding_model=None, sample_func=default_sample_func,
                                     collate_fn=collatefunc_2, batch_size=64)
-    embedding_test_dataset = SequenceSampleDataset(markov_test_dataset, embedding_model=model, sample_func=default_sample_func, 
+    embedding_test_dataset = SequenceSampleDataset(markov_test_dataset, embedding_model=model, sample_func=default_sample_func,
                                     collate_fn=collatefunc_2, batch_size=64)
-    non_embedding_test_dataset = SequenceSampleDataset(markov_test_dataset, embedding_model=None, sample_func=default_sample_func, 
+    non_embedding_test_dataset = SequenceSampleDataset(markov_test_dataset, embedding_model=None, sample_func=default_sample_func,
                                     collate_fn=collatefunc_2, batch_size=64)
 
 
     linear_model_on_embeddings_config = Namespace(
         save_to = 'linear_model_on_embeddings_render_2_random_terminal.pth',
         load_from = None,
-        network_constructor=default_network_constructor, 
-        network_args={'network_type':'linear_net', 'input_features':3}, 
-        optim_constructor=default_optim_constructor, 
-        optim_args={'lr':0.001}, 
-        update_func=prob_update, 
+        network_constructor=default_network_constructor,
+        network_args={'network_type':'linear_net', 'input_features':3},
+        optim_constructor=default_optim_constructor,
+        optim_args={'lr':0.001},
+        update_func=prob_update,
         update_cfg = Namespace(rl_gamma=0.977, terminal_weight=1),
-        predict_func=predict_batch, 
+        predict_func=predict_batch,
         predict_func_cfg = Namespace(),
         embed_func=embed_batch,
         embed_cfg = Namespace(),
-        device='cpu', 
+        device='cpu',
         map_batch_to_device=default_map_batch_to_device,
         )
 
     linear_model_off_embeddings_config = Namespace(
         save_to = 'linear_model_off_embeddings_render_2_random_terminal.pth',
         load_from = None,
-        network_constructor=default_network_constructor, 
-        network_args={'network_type':'linear_net','input_features':9}, 
-        optim_constructor=default_optim_constructor, 
-        optim_args={'lr':0.001}, 
-        update_func=prob_update, 
+        network_constructor=default_network_constructor,
+        network_args={'network_type':'linear_net','input_features':9},
+        optim_constructor=default_optim_constructor,
+        optim_args={'lr':0.001},
+        update_func=prob_update,
         update_cfg = Namespace(rl_gamma=0.977, terminal_weight=1),
-        predict_func=predict_batch, 
+        predict_func=predict_batch,
         predict_func_cfg = Namespace(),
         embed_func=embed_batch,
         embed_cfg = Namespace(),
-        device='cpu', 
+        device='cpu',
         map_batch_to_device=default_map_batch_to_device,
         )
 
@@ -262,18 +262,3 @@ if __name__ == '__main__':
 # Results:
 
 # Reward unrelated to secondary label: both linear accuracies 0.5
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
