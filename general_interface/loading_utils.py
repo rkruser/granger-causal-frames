@@ -6,6 +6,8 @@ import numpy as np
 #import time
 import argparse
 from argparse import Namespace
+import copy
+import decord
 
 from helper_functions import *
 
@@ -145,19 +147,30 @@ class Zipindexables:
 Sequence objects
 '''
 
-default_sequence_mode = Namespace(
-        window_size = 10,
-        return_transitions = True,
-        pad_beginning = True,
-        return_global_label = False,
-        post_transform = postprocess_1,
-#        null_transform = nullfunc_1,
-        collate_fn = collatefunc_1,
-        batch_size = 64, # typically unused
-        )
+
+
+
+'''
+Make a copy of ns1 and update it with ns2, or just return the copy if ns2 is None
+'''
+def merge_namespaces(ns1, ns2):
+    new_ns = copy.copy(ns1)
+    if ns2 is not None:
+        new_ns.__dict__.update(ns2.__dict__)
+    return new_ns
 
 class SequenceObject:
-    def __init__(self, *args, global_label=None, null_object=None, mode=default_sequence_mode):
+    default = Namespace(
+            window_size = 10,
+            return_transitions = True,
+            pad_beginning = True,
+            return_global_label = False,
+            post_transform = postprocess_1,
+            collate_fn = collatefunc_1,
+            batch_size = 64, # typically unused
+            )
+
+    def __init__(self, *args, global_label=None, null_object=None, mode=None):
         assert(len(args) > 0)
         assert(len(args[0]) > 0)
         for a in args:
@@ -170,8 +183,10 @@ class SequenceObject:
         self.set_mode(mode)
 
     def set_mode(self, mode):
-        self.mode = mode
-#        self.null_object = self.mode.null_transform(np.array(self.sequences[0][0])) # This is stored redundantly across objects; fix later
+        base_dict = self.__dict__.get('mode')
+        if base_dict is None:
+            base_dict = self.__class__.default
+        self.mode = merge_namespaces(base_dict, mode)
 
     def __len__(self):
         if self.mode.pad_beginning:
@@ -257,6 +272,42 @@ class SequenceObject:
         pass
 
 
+
+
+class VideoSequenceObject(SequenceObject):
+    default = Namespace(
+            window_size = 10,
+            return_transitions = True,
+            pad_beginning = True,
+            return_global_label = False,
+            post_transform = postprocess_1,
+            collate_fn = collatefunc_1,
+            batch_size = 64, 
+            frame_size = 64, 
+            frame_interval=3,
+            )
+
+    def __init__(self, video_name, video_label, mode=default_sequence_mode):
+        self.video_name = video_name
+        self.video_label = video_label
+        self.mode = mode
+
+    '''
+    Use decord loader to load single video, generate labels, and populate the sequenceObject member variables
+    '''
+    def _load(self):
+        reader = decorder.VideoReader(self.video_name, ctx=decord.cpu(0), width=frame_size, height=frame_size)
+        n_frames = len(reader)
+        frames = reader.get_batch(np.arange(0,n_frames,self.mode.frame_interval)) #random start location?
+        frames = frames.permute(0,3,1,2)
+        # ...
+
+    def _flush(self):
+        pass
+
+
+
+
 # Derive various types of sequence objects
 # Implement load and flush on them
 # Sequences must be numpy arrays
@@ -265,20 +316,22 @@ class SequenceObject:
 # Can load batches via __next__ (for processing the individual sequence during testing)
 # Can place null values at beginning of sequence
 
-default_sequence_dataset_options = Namespace(
-        sequence_mode = default_sequence_mode,
-        collate_fn = collatefunc_1,
-        batch_size = 64,
-        sample_mode = 'random',
-        preload_num = None,
-        )
+
+
 
 class SequenceDataset:
-    def __init__(self, sequence_objects, options=default_sequence_dataset_options): # include curation function and randomization level, e.g. lstm or other
-        self.sequences = sequence_objects
-        self.options = options
-        self.set_modes(self.options.sequence_mode)
+    default = Namespace(
+            sequence_mode = None,
+            collate_fn = collatefunc_1,
+            batch_size = 64,
+            sample_mode = 'random',
+            preload_num = None,
+            )
 
+    def __init__(self, sequence_objects, options=None): # include curation function and randomization level, e.g. lstm or other
+        self.sequences = sequence_objects
+        self.options = merge_namespaces(self.__class__.default, options)
+        self.set_modes(self.options.sequence_mode)
 
     def set_modes(self, mode):
         for s in self.sequences:

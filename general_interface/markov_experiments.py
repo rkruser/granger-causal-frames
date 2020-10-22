@@ -14,9 +14,6 @@ from copy import copy
 
 
 
-
-
-
 def train_and_visualize(markov_process, model):
 
     '''

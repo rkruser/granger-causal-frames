@@ -202,6 +202,7 @@ def time_average(predictions, method='half_gaussian'):
 
 
 def plot_all(folder, name_prefixes, predictions, event_indices, final_labels, index_time_conversion=0.1, step_size=0.01):
+
     results = sweep_decision_boundary(predictions, event_indices, final_labels, step_size=step_size)
 
     threshold = results.max_acc_threshold
