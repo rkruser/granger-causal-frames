@@ -339,6 +339,7 @@ default_sequence_dataset_options = Namespace(
         batch_size = 64,
         sample_mode = 'random',
         preload_num = None,
+        stacked = True
         )
 
 class SequenceDataset:
@@ -377,7 +378,14 @@ class SequenceDataset:
         self.position = end
         num_return_seqs = len(batch[0])
         return_seqs = [ [t[i] for t in batch] for i in range(num_return_seqs) ]
-        return self.options.collate_fn(return_seqs)
+        return_seqs = self.options.collate_fn(return_seqs)
+
+        if self.options.stacked:
+            temp_len = int(return_seqs[0].shape[1] / self.options.sequence_mode.window_size)
+            reshape_size = [self.options.batch_size, temp_len, self.options.sequence_mode.window_size] + list(return_seqs[0].shape[2:])
+            return_seqs[0] = return_seqs[0].view(reshape_size).squeeze()
+
+        return return_seqs
 
     # Save dataset to file
     def save(self):
@@ -755,17 +763,20 @@ def test_sequence_object():
     seq = np.arange(40).reshape((10,2,2))
     seq2 = np.arange(10)
     mode = default_sequence_mode
+    mode.return_transitions = False
     mode.window_size = 2
     mode.post_transform = postprocess_test
     mode.return_transitions = True
     mode.pad_beginning = False
+
 #    mode.
     s = SequenceObject(seq, seq2, mode=mode)
 
 
     print(len(s))
     for i in range(len(s)):
-        print(s[i])
+        #print(s[i])
+        print(s[i][0].shape)
 
 
 def test_sequence_dataset():
@@ -773,6 +784,7 @@ def test_sequence_dataset():
     seq2 = np.arange(50).reshape((5,10))
 
     mode = default_sequence_mode
+    mode.return_transitions = False
     mode.window_size = 4
     mode.post_transform = postprocess_1
     mode.return_transitions = False
@@ -782,13 +794,14 @@ def test_sequence_dataset():
     opts.sequence_mode = mode
     opts.batch_size = 7
     opts.sample_mode = 'sequential'
+    opts.collate_fn = collatefunc_2
 
     sobjs = [ SequenceObject(s, s2, mode=mode) for s,s2 in zip(seqs,seq2) ]
 
     sdat = SequenceDataset(sobjs, options = opts)
 
     for batch in sdat:
-        print(batch)
+        #print(batch)
         print(batch[0].shape)
 
 
