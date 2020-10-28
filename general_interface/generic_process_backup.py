@@ -339,7 +339,7 @@ default_sequence_dataset_options = Namespace(
         batch_size = 64,
         sample_mode = 'random',
         preload_num = None,
-        stacked = True
+        if_flatten = True
         )
 
 class SequenceDataset:
@@ -380,9 +380,9 @@ class SequenceDataset:
         return_seqs = [ [t[i] for t in batch] for i in range(num_return_seqs) ]
         return_seqs = self.options.collate_fn(return_seqs)
 
-        if self.options.stacked:
-            temp_len = int(return_seqs[0].shape[1] / self.options.sequence_mode.window_size)
-            reshape_size = [self.options.batch_size, temp_len, self.options.sequence_mode.window_size] + list(return_seqs[0].shape[2:])
+        if ('if_flatten' in vars(self.options)) and self.options.if_flatten:
+            num_channels = int(return_seqs[0].shape[1] / self.options.sequence_mode.window_size)
+            reshape_size = [self.options.batch_size, self.options.sequence_mode.window_size, num_channels] + list(return_seqs[0].shape[2:])
             return_seqs[0] = return_seqs[0].view(reshape_size).squeeze()
 
         return return_seqs
@@ -516,12 +516,36 @@ class LinearNet(nn.Module):
         x = x.view(len(x),-1)
         return self.net(x)
 
+class LstmNet(nn.Module):
+    def __init__(self, input_features=3, intermediate_features=256, embedding_features=3):
+        super().__init__()
 
-def default_network_constructor(network_type='sequence_net', input_features=10, intermediate_features=256, embedding_features=3):
+        self.lstm = nn.LSTM(input_features, intermediate_features, 3, batch_first=True)
+        self.embedding_net = nn.Linear(intermediate_features, embedding_features)
+        self.prediction_net = nn.Linear(embedding_features, 1)
+
+    def embed(self, x):
+        batch_s, series_l = x.shape[:2]
+        x = x.view(batch_s, series_l, -1)
+        x, _ = self.lstm(x)
+        x = x[-1,:]
+        return self.embedding_net(x).squeeze()
+
+    def forward(self, x):
+        batch_s, series_l = x.shape[:2]
+        x = x.view(batch_s, series_l, -1)
+        x, _ = self.lstm(x)
+        x = x[-1,:]
+        x = self.embedding_net(x)
+        return self.prediction_net(x).squeeze()
+
+def default_network_constructor(network_type='sequence_net', input_features=3, intermediate_features=256, embedding_features=3):
     if network_type == 'sequence_net':
         return SequenceNet(input_features=input_features, intermediate_features=intermediate_features, embedding_features=embedding_features)
     elif network_type == 'linear_net':
         return LinearNet(input_features=input_features)
+    elif network_type == 'lstm_net':
+        return LstmNet(input_features=input_features, intermediate_features=intermediate_features, embedding_features=embedding_features)
     else:
         print("Unrecognized network type")
         sys.exit(1)
@@ -802,7 +826,7 @@ def test_sequence_dataset():
 
     for batch in sdat:
         #print(batch)
-        print(batch[0].shape)
+        print(batch[1].shape)
 
 
 

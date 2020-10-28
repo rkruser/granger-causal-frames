@@ -62,15 +62,19 @@ class LstmNet(nn.Module):
         self.prediction_net = nn.Linear(embedding_features, 1)
 
     def embed(self, x):
+        batch_s, series_l = x.shape[:2]
+        x = x.view(batch_s, series_l, -1)
         x, _ = self.lstm(x)
         x = x[-1,:]
-        return self.embedding_net(x)
+        return self.embedding_net(x).squeeze()
 
     def forward(self, x):
+        batch_s, series_l = x.shape[:2]
+        x = x.view(batch_s, series_l, -1)
         x, _ = self.lstm(x)
         x = x[-1,:]
         x = self.embedding_net(x)
-        return self.prediction_net(x)
+        return self.prediction_net(x).squeeze()
 
 def default_network_constructor(network_type='sequence_net', input_features=3, intermediate_features=256, embedding_features=3):
     if network_type == 'sequence_net':
