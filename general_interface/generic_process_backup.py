@@ -380,10 +380,11 @@ class SequenceDataset:
         return_seqs = [ [t[i] for t in batch] for i in range(num_return_seqs) ]
         return_seqs = self.options.collate_fn(return_seqs)
 
+        # flatten data for lstm
         if ('if_flatten' in vars(self.options)) and self.options.if_flatten:
-            num_channels = int(return_seqs[0].shape[1] / self.options.sequence_mode.window_size)
-            reshape_size = [self.options.batch_size, self.options.sequence_mode.window_size, num_channels] + list(return_seqs[0].shape[2:])
-            return_seqs[0] = return_seqs[0].view(reshape_size).squeeze()
+            num_channels = int(return_seqs[0][0].shape[1] / self.options.sequence_mode.window_size)
+            reshape_size = [2, self.options.batch_size, self.options.sequence_mode.window_size, num_channels] + list(return_seqs[0][0].shape[2:])
+            return_seqs[0] = return_seqs[0].view(reshape_size)
 
         return return_seqs
 
@@ -532,11 +533,7 @@ class LstmNet(nn.Module):
         return self.embedding_net(x).squeeze()
 
     def forward(self, x):
-        batch_s, series_l = x.shape[:2]
-        x = x.view(batch_s, series_l, -1)
-        x, _ = self.lstm(x)
-        x = x[-1,:]
-        x = self.embedding_net(x)
+        x = self.embed(x)
         return self.prediction_net(x).squeeze()
 
 def default_network_constructor(network_type='sequence_net', input_features=3, intermediate_features=256, embedding_features=3):

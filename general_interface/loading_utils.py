@@ -1,4 +1,4 @@
-import torch 
+import torch
 #import torch.nn as nn
 #import os
 #import sys
@@ -14,13 +14,13 @@ class Zipindices:
     def __init__(self, length_list):
         self.llist = np.array(length_list)
         self.clist = np.cumsum(length_list)-1
-        
+
     def __len__(self):
         if len(self.clist)>0:
             return self.clist[-1]+1
         else:
             return 0
-        
+
     def __getitem__(self, key):
         if key < 0:
             key = self.__len__()+key
@@ -38,16 +38,16 @@ class Zipindexables:
         self.indexables = indexables
         self.slice_is_range = slice_is_range
         self._buildindex()
-        
+
     def _buildindex(self):
         llist = []
         for l in self.indexables:
             llist.append(len(l))
-        self.zipindex = Zipindices(llist)       
-        
+        self.zipindex = Zipindices(llist)
+
     def __len__(self):
         return len(self.zipindex)
-    
+
     def __getitem__(self, key):
         if isinstance(key,int) or isinstance(key,np.int64):
             return self._access(key)
@@ -81,24 +81,24 @@ class Zipindexables:
             return item
         else:
             raise StopIteration
-            
+
     def get_indexable(self, key):
         return self.indexables[key]
-    
+
     def num_indexables(self):
         return len(self.indexables)
-    
+
     def __str__(self):
         return self.__repr__()+', contents = '+str(self.indexables)
-        
+
     def __repr__(self):
         return 'Zipindexables object, indexables {0}, items {1}'.format(
             self.num_indexables(), self.__len__())
-            
+
     def _access(self, key):
         place, ind = self.zipindex[key]
         return self.indexables[place][ind]
-        
+
     # Not maximally efficient, but whatever
     def _slice(self, key):
         start = key.start
@@ -110,13 +110,13 @@ class Zipindexables:
             step = 1
         if stop is None:
             stop = self.__len__()
-            
+
         if self.slice_is_range:
             return self._int_array_index(range(start,stop,step)) #changed from np.arange to range
-        
+
         if step < 0:
             print("Warning: negative step size produces undefined behavior when slicing a Zipindexables object")
-        
+
         place_list = []
         place_inds = {}
         for i in range(start, stop, step):
@@ -126,20 +126,20 @@ class Zipindexables:
                 place_list.append(place)
             else:
                 place_inds[place][1] = ind
-            
+
         new_items = []
         for j in place_list:
             sl = place_inds[j]
             new_items.append(self.indexables[j][sl[0]:sl[1]+step:step])
-                             
+
         return Zipindexables(new_items)
-            
+
     def _int_array_index(self, key):
         all_items = []
         for i in key:
             all_items.append(self._access(i))
         return all_items
-        
+
 
 '''
 Sequence objects
@@ -199,7 +199,7 @@ class SequenceObject:
         data_window = np.concatenate(null_list+[data_window], axis=0)
 
         is_terminal = (i == self.__len__()-1)
-        
+
         if self.mode.return_transitions:
             if is_terminal:
                 future_data_window = np.concatenate(self.mode.window_size*[self.null_object],axis=0)
@@ -218,7 +218,7 @@ class SequenceObject:
         else:
             return self.mode.post_transform(all_results)
 
-    
+
     def __str__(self):
         s = '[\n'
         for i in range(self.__len__()):
@@ -271,6 +271,7 @@ default_sequence_dataset_options = Namespace(
         batch_size = 64,
         sample_mode = 'random',
         preload_num = None,
+        if_flatten = False
         )
 
 class SequenceDataset:
@@ -292,7 +293,7 @@ class SequenceDataset:
         if self.options.sample_mode == 'random':
             self.indices = np.random.permutation(self.indices)
         self.position = 0
-       
+
 
     def __iter__(self):
         self._reset()
@@ -309,7 +310,18 @@ class SequenceDataset:
         self.position = end
         num_return_seqs = len(batch[0])
         return_seqs = [ [t[i] for t in batch] for i in range(num_return_seqs) ]
-        return self.options.collate_fn(return_seqs)
+        return_seqs = self.options.collate_fn(return_seqs)
+        # flatten data for lstm
+        if ('if_flatten' in vars(self.options)) and self.options.if_flatten:
+            if (self.options.collate_fn == collatefunc_1):
+                num_channels = int(return_seqs[0][0].shape[1] / self.options.sequence_mode.window_size)
+                reshape_size = [2, return_seqs[0][0].shape[0], self.options.sequence_mode.window_size, num_channels] + list(return_seqs[0][0].shape[2:])
+            elif (self.options.collate_fn == collatefunc_2):
+                num_channels = int(return_seqs[0].shape[1] / self.options.sequence_mode.window_size)
+                reshape_size = [return_seqs[0].shape[0], self.options.sequence_mode.window_size, num_channels] + list(return_seqs[0].shape[2:])
+
+            return_seqs[0] = return_seqs[0].view(reshape_size)
+        return return_seqs
 
     # Save dataset to file
     def save(self):
@@ -353,7 +365,7 @@ class SequenceSampleDataset:
             else:
                 for batch in seq:
                     seq_embeddings.append(batch[0])
-                    seq_labels.append(batch[2]) 
+                    seq_labels.append(batch[2])
             seq_embeddings = torch.cat(seq_embeddings)
             seq_labels = torch.cat(seq_labels)
 
@@ -377,18 +389,3 @@ class SequenceSampleDataset:
         num_return_seqs = len(batch[0])
         return_seqs = [ [t[i] for t in batch] for i in range(num_return_seqs) ]
         return self.collate_fn(return_seqs)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

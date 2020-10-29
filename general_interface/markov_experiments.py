@@ -2,7 +2,7 @@ from artificial_data import *
 from loading_utils import *
 from models import *
 
-import torch 
+import torch
 import torch.nn as nn
 import os
 import sys
@@ -23,7 +23,7 @@ def train_and_visualize(markov_process, model):
     SequenceObject options
     '''
     sequence_train_mode = copy(default_sequence_mode)
-    sequence_train_mode.window_size = 1
+    sequence_train_mode.window_size = 5
     sequence_train_mode.return_transitions=True
     sequence_train_mode.post_transform = postprocess_2
 
@@ -37,8 +37,11 @@ def train_and_visualize(markov_process, model):
     '''
     Dataset options
     '''
+    default_sequence_dataset_options.if_flatten = True
+
     train_dset_opts = copy(default_sequence_dataset_options)
     train_dset_opts.sequence_mode = sequence_train_mode
+    train_dset_opts.collate_fn = collatefunc_1
 
     test_dset_opts = copy(default_sequence_dataset_options)
     test_dset_opts.sequence_mode = sequence_test_mode
@@ -52,48 +55,24 @@ def train_and_visualize(markov_process, model):
     train_dataset = MarkovSequenceDataset(1000, markov_process, options=train_dset_opts)
 
     print("Training RL model on markov dataset")
-    train_model_on_dataset(model, train_dataset, print_every=100, save_every = 5, n_epochs=30)
+    train_model_on_dataset(model, train_dataset, print_every=100, save_every=5, n_epochs=20)
 
     states, values = markov_process.get_all_states_and_values(model.cfg.update_cfg.rl_gamma)
-
     states = torch.from_numpy(states).float()
-
-    predicted_values = model.predict(states).detach().numpy()
-
+    predicted_values = model.predict(states.view(1, 40, 3)).cpu().detach().numpy()
     visualize_markov_sequence(states, values, predicted_values=predicted_values)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 def experiment():
     markov_process = MarkovProcess(renderer=feature_renderer_2)
-
     model_config = copy(default_model_config)
+    model_config.network_args['network_type'] = 'lstm_net'
+    model_config.predict_func = predict_batch_lstm
     model_config.save_to = 'markov_model_2_epochs_100_gamma_95.pth'
     model_config.update_cfg.rl_gamma=0.95
-    model_config.device='cpu'
+    model_config.device='cuda'
 
     model = GenericModel(model_config)
-    
+
     train_and_visualize(markov_process, model)
 
 

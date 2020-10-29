@@ -54,7 +54,7 @@ class LinearNet(nn.Module):
         return self.net(x)
 
 class LstmNet(nn.Module):
-    def __init__(self, input_features=3, intermediate_features=256, embedding_features=3):
+    def __init__(self, input_features=3, intermediate_features=128, embedding_features=3):
         super().__init__()
 
         self.lstm = nn.LSTM(input_features, intermediate_features, 3, batch_first=True)
@@ -65,16 +65,21 @@ class LstmNet(nn.Module):
         batch_s, series_l = x.shape[:2]
         x = x.view(batch_s, series_l, -1)
         x, _ = self.lstm(x)
-        x = x[-1,:]
-        return self.embedding_net(x).squeeze()
+        x = x[:,-1]
+        return self.embedding_net(x)
 
     def forward(self, x):
+        x = self.embed(x)
+        return self.prediction_net(x)
+
+    def predict_batch(self, x):
         batch_s, series_l = x.shape[:2]
         x = x.view(batch_s, series_l, -1)
         x, _ = self.lstm(x)
-        x = x[-1,:]
+        x = x.view(batch_s * series_l, -1)
         x = self.embedding_net(x)
-        return self.prediction_net(x).squeeze()
+        x = self.prediction_net(x)
+        return x.view(batch_s, series_l, -1)
 
 def default_network_constructor(network_type='sequence_net', input_features=3, intermediate_features=256, embedding_features=3):
     if network_type == 'sequence_net':
@@ -106,9 +111,7 @@ def q_update(network, optim, batch, cfg):
     x, r, terminal = batch[0], batch[1], batch[-1] #convention: the last thing in the batch is the terminal labels
     x_current = x[0]
     x_future = x[1]
-
     q_current = network(x_current).squeeze(1)
-
     weights = torch.ones(len(x_current), device=x_current.device)
     with torch.no_grad():
         weights[terminal] = cfg.terminal_weight
@@ -137,6 +140,10 @@ def prob_update(network, optim, batch, cfg):
 def predict_batch(network, x, cfg):
 #    x, y = batch[0], batch[1]
     predictions = network(x).squeeze(1)
+    return predictions
+
+def predict_batch_lstm(network, x, cfg):
+    predictions = network.predict_batch(x).squeeze()
     return predictions
 
 def embed_batch(network, x, cfg):
