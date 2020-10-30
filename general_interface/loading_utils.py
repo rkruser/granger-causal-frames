@@ -153,8 +153,8 @@ Sequence objects
 '''
 Make a copy of ns1 and update it with ns2, or just return the copy if ns2 is None
 '''
-def merge_namespaces(ns1, ns2):
-    new_ns = copy.copy(ns1)
+def merge_namespaces(ns1, ns2, make_copy=True):
+    new_ns = copy.copy(ns1) if make_copy else ns1
     if ns2 is not None:
         new_ns.__dict__.update(ns2.__dict__)
     return new_ns
@@ -184,9 +184,11 @@ class SequenceObject:
 
     def set_mode(self, mode):
         base_dict = self.__dict__.get('mode')
+        make_copy = False
         if base_dict is None:
             base_dict = self.__class__.default
-        self.mode = merge_namespaces(base_dict, mode)
+            make_copy = True
+        self.mode = merge_namespaces(base_dict, mode, make_copy=make_copy)
 
     def __len__(self):
         if self.mode.pad_beginning:
@@ -287,10 +289,10 @@ class VideoSequenceObject(SequenceObject):
             frame_interval=3,
             )
 
-    def __init__(self, video_name, video_label, mode=default_sequence_mode):
+    def __init__(self, video_name, video_label, mode=None): #default_sequence_mode):
         self.video_name = video_name
         self.video_label = video_label
-        self.mode = mode
+        self.mode = mode #Need to init this later
 
     '''
     Use decord loader to load single video, generate labels, and populate the sequenceObject member variables
@@ -300,7 +302,7 @@ class VideoSequenceObject(SequenceObject):
         n_frames = len(reader)
         frames = reader.get_batch(np.arange(0,n_frames,self.mode.frame_interval)) #random start location?
         frames = frames.permute(0,3,1,2)
-        # ...
+        # ... #call super().__init__() here?
 
     def _flush(self):
         pass

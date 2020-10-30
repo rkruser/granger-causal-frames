@@ -52,9 +52,11 @@ def choice_function_1(choice_matrix, terminal_reward):
 
 def choice_function_2(choice_matrix, terminal_reward):
     if terminal_reward == 1:
-        choice = np.random.choice(4, p=[0.5, 0.0, 0.0, 0.5])
+        #choice = np.random.choice(4, p=[0.5, 0.0, 0.0, 0.5])
+        choice = np.random.choice([0,3])
     else:
-        choice = np.random.choice(4, p=[0.0, 0.5, 0.5, 0.0])
+#        choice = np.random.choice(4, p=[0.0, 0.5, 0.5, 0.0])
+        choice = np.random.choice([1,2])
     feature_label = 1.0 if choice in [0,3] else 0.0 #Not linearly separable
     feature_choice = choice_matrix[choice]
 
@@ -380,11 +382,13 @@ def visualize_markov_sequence(all_states, state_values, predicted_values=None, t
 A derived class of SequenceDataset that constructs a dataset by sampling n_sequences from the given markov_process, creating SequenceObjects out of each sequence (initialized using options.sequence_mode), then initializing the underlying SequenceDataset using these objects and the given options.
 '''
 class MarkovSequenceDataset(SequenceDataset):
-    def __init__(self, n_sequences, markov_process, options=default_sequence_dataset_options):
+    def __init__(self, n_sequences, markov_process, options=None): #default_sequence_dataset_options):
         sequence_objects = []
         for i in range(n_sequences):
             sequence, rewards, feature_labels, global_labels, states = markov_process.sample()
-            seq_obj = SequenceObject(sequence, rewards, feature_labels, states, global_label=global_labels, null_object=null_object_1, mode=options.sequence_mode)
+            expanded_global_label = np.empty(len(sequence),dtype=sequence.dtype)
+            expanded_global_label.fill(global_labels[0])
+            seq_obj = SequenceObject(sequence, rewards, feature_labels, expanded_global_label, states, global_label=global_labels, null_object=null_object_1, mode=options.sequence_mode)
             sequence_objects.append(seq_obj)
 
         super().__init__(sequence_objects, options=options)

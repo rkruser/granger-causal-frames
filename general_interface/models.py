@@ -6,6 +6,7 @@ import numpy as np
 import time
 import argparse
 from argparse import Namespace
+from loading_utils import merge_namespaces
 
 
 def default_map_batch_to_device(batch, device):
@@ -100,8 +101,8 @@ def prob_loss(predictions, actual):
 
 def q_update(network, optim, batch, cfg):
     x, r, terminal = batch[0], batch[1], batch[-1] #convention: the last thing in the batch is the terminal labels
-    x_current = x[0]
-    x_future = x[1]
+    x_current = x[:, 0] #Changed back!
+    x_future = x[:, 1]
 
     q_current = network(x_current).squeeze(1)
 
@@ -130,6 +131,17 @@ def prob_update(network, optim, batch, cfg):
 
     return loss.item()
 
+def prob_update_markov_regressor(network, optim, batch, cfg):
+    x, y = batch[0], batch[3] #batch[3] should be expanded_global_label
+    predictions = network(x).squeeze(1)
+    loss = prob_loss(predictions, y)
+    network.zero_grad()
+    loss.backward()
+    optim.step()
+
+    return loss.item()
+
+
 def predict_batch(network, x, cfg):
 #    x, y = batch[0], batch[1]
     predictions = network(x).squeeze(1)
@@ -144,7 +156,8 @@ Generic models:
     Take neural nets, optimizer settings, loss settings, and track them
 '''
 
-default_model_config = Namespace(
+class GenericModel:
+    default = Namespace(
         save_to = 'model.pth',
         load_from = None,
         network_constructor=default_network_constructor,
@@ -161,13 +174,19 @@ default_model_config = Namespace(
         map_batch_to_device=default_map_batch_to_device,
         )
 
-
-class GenericModel:
     def __init__(self, cfg):
-        self.cfg = cfg # contains savename and everything else
+        self.set_config(cfg)  # contains savename and everything else
         self._build()
         if self.cfg.load_from is not None:
             self._load()
+
+    def set_config(self, cfg):
+        base_dict = self.__dict__.get('cfg')
+        make_copy = False
+        if base_dict is None:
+            base_dict = self.__class__.default
+            make_copy = True
+        self.cfg = merge_namespaces(base_dict, cfg, make_copy=make_copy)
 
     def _build(self):
         self.network = self.cfg.network_constructor(**self.cfg.network_args)
@@ -257,8 +276,10 @@ def predict_classifier_model_on_dataset(model, dataset):
     return total_accuracy
 
 
+def trivial_score_func(preds, global_label):
+    return None
 
-def predict_sequence_model_on_dataset(model, dataset, sequence_score_func):
+def predict_sequence_model_on_dataset(model, dataset, sequence_score_func=trivial_score_func):
     all_predictions = []
     all_scores = []
     for i in range(dataset.num_sequences()):
@@ -266,6 +287,7 @@ def predict_sequence_model_on_dataset(model, dataset, sequence_score_func):
         seq_predictions = []
         for batch in seq:
             predictions = model.predict(batch[0]).to('cpu').detach().numpy()
+            seq_predictions.append(predictions)
         seq_predictions = np.concatenate(seq_predictions)
         all_predictions.append(seq_predictions)
         all_scores.append(sequence_score_func(seq_predictions, seq.global_label))
