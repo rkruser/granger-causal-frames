@@ -178,7 +178,7 @@ class SequenceObject:
 
         self._sequence_length = len(args[0])
         self.sequences = args
-        self.global_label = global_label,
+        self.global_label = global_label
         self.null_object = null_object
         self.set_mode(mode)
 

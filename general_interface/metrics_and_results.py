@@ -140,6 +140,7 @@ def series_dataset_scores(predictions, event_indices, final_labels, threshold):
     return all_stats
     
 
+# should just use the sorted predictions to sweep the boundary
 def sweep_decision_boundary(predictions, event_indices, final_labels, step_size = 0.01):
     all_predictions = np.concatenate(predictions)
     min_pred = np.min(all_predictions)
@@ -164,14 +165,17 @@ def sweep_decision_boundary(predictions, event_indices, final_labels, step_size 
         stats = series_dataset_scores(predictions, event_indices, final_labels, th)
 
         if stats.precision is not None and stats.precision > max_precision:
+            max_precision = stats.precision
             max_precision_threshold = th
             max_precision_stats = stats
 
         if stats.recall is not None and stats.recall > max_recall:
+            max_recall = stats.recall
             max_recall_threshold = th
             max_recall_stats = stats
             
-        if stats.acc is not None and stats.acc > max_acc:
+        if stats.accuracy is not None and stats.accuracy > max_acc:
+            max_acc = stats.accuracy
             max_acc_threshold = th
             max_acc_stats = stats
 
@@ -212,18 +216,19 @@ def plot_all(folder, name_prefixes, predictions, event_indices, final_labels, in
     for i,preds in enumerate(predictions):
         plt.clf()
 
-        plt.ylim(max(stats.min_prediction, -2), min(stats.max_prediction,2))
+#        plt.ylim(max(results.min_prediction, -2), min(results.max_prediction,2))
+        plt.ylim(0,1)
         plt.title(name_prefixes[i]+'_label_'+str(final_labels[i]))
         plt.xlabel('Time')
         plt.ylabel('Predicted value')
-        plt.plot(np.arange(len(preds))*index_time_conversion, preds, label='Predicted state values')
-        plt.axhline(y=threshold, label='Decision threshold')
+        plt.plot(np.arange(len(preds))*index_time_conversion, preds, label='Predicted state values', color='b')
+        plt.axhline(y=threshold, label='Decision threshold', color='m')
 
-        if predicted_indices[i] > 0:
-            plt.axvline(x=acc_stats.predicted_indices[i]*index_time_conversion, label='Event first predicted')
+        if acc_stats.predicted_indices[i] > 0:
+            plt.axvline(x=acc_stats.predicted_indices[i]*index_time_conversion, label='Event first predicted', color='r')
 
         if event_indices[i] > 0:
-            plt.axvline(x=event_indices[i]*index_time_conversion, label='Event time')
+            plt.axvline(x=event_indices[i]*index_time_conversion, label='Event time', color='g')
         plt.legend()
 
         plt.savefig(os.path.join(folder, name_prefixes[i]+'.png'))

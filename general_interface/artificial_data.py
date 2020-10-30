@@ -120,6 +120,11 @@ feature_label : The constant feature label
 #    return np.array(sequence_values), feature_labels, feature_label
 
 
+def extract_first_index(arr, val):
+    inds = np.argwhere(arr==val)
+    if len(inds) == 0:
+        return -1
+    return inds[0,0]
 
 '''
 Take a state sequence and a terminal label and return a sequence of rewards at each state.
@@ -128,13 +133,15 @@ def label_sequence_1(states, terminal_reward):
     rewards = np.zeros(len(states))
     terminal_label = terminal_reward
     rewards[-1] = terminal_label
-    return rewards, terminal_label
+    event_index = extract_first_index(states, 4)
+    return rewards, event_index, terminal_label
 
 def label_sequence_2(states, terminal_reward):
     rewards = np.zeros(len(states))
     terminal_label = np.random.choice([0.0, 1.0])
     rewards[-1] = terminal_label
-    return rewards, terminal_label
+    event_index = extract_first_index(states,4)
+    return rewards, event_index, terminal_label
 
 
 '''
@@ -197,7 +204,7 @@ class FeatureSequenceRenderer(SequenceRenderer):
     def render(self, state_sequence, terminal_reward):
         mapped_values = []
 
-        sequence_labels, global_label = self.label_function(state_sequence, terminal_reward)
+        sequence_labels, event_index, global_label = self.label_function(state_sequence, terminal_reward)
         feature_choice, global_feature_label = self.choice_function(self.choice_matrix, global_label) #note the dependence on global label
 
         for s in state_sequence:
@@ -207,7 +214,7 @@ class FeatureSequenceRenderer(SequenceRenderer):
         feature_labels = np.empty(len(state_sequence))
         feature_labels.fill(global_feature_label)
 
-        return mapped_values, sequence_labels, feature_labels, global_label, global_feature_label
+        return mapped_values, sequence_labels, feature_labels, global_label, event_index, global_feature_label
 
 
     # Need a way of returning all analytical values
@@ -282,8 +289,8 @@ class MarkovProcess:
     '''
     def sample(self):
         states, terminal_reward = self.sample_states()
-        mapped_states, rewards, feature_labels, global_label, global_feature_label = self.renderer.render(states, terminal_reward)
-        global_labels = (global_label, global_feature_label)
+        mapped_states, rewards, feature_labels, global_label, event_index, global_feature_label = self.renderer.render(states, terminal_reward)
+        global_labels = (global_label, global_feature_label, event_index)
 
         return mapped_states, rewards, feature_labels, global_labels, states
 

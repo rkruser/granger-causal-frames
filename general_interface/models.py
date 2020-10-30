@@ -147,6 +147,12 @@ def predict_batch(network, x, cfg):
     predictions = network(x).squeeze(1)
     return predictions
 
+def predict_batch_sigmoid(network, x, cfg):
+#    x, y = batch[0], batch[1]
+    predictions = torch.sigmoid(network(x).squeeze(1))
+    return predictions
+
+
 def embed_batch(network, x, cfg):
     embeddings = network.embed(x)
     return embeddings
@@ -279,9 +285,10 @@ def predict_classifier_model_on_dataset(model, dataset):
 def trivial_score_func(preds, global_label):
     return None
 
-def predict_sequence_model_on_dataset(model, dataset, sequence_score_func=trivial_score_func):
+def predict_sequence_model_on_dataset(model, dataset): #sequence_score_func=trivial_score_func):
     all_predictions = []
-    all_scores = []
+    all_final_labels = []
+    all_event_indices = []
     for i in range(dataset.num_sequences()):
         seq = dataset.get_sequence(i)
         seq_predictions = []
@@ -290,6 +297,8 @@ def predict_sequence_model_on_dataset(model, dataset, sequence_score_func=trivia
             seq_predictions.append(predictions)
         seq_predictions = np.concatenate(seq_predictions)
         all_predictions.append(seq_predictions)
-        all_scores.append(sequence_score_func(seq_predictions, seq.global_label))
+        all_final_labels.append(seq.global_label[0])
+        all_event_indices.append(seq.global_label[2])
+        #all_scores.append(sequence_score_func(seq_predictions, seq.global_label))
 
-    return all_predictions, all_scores
+    return all_predictions, all_final_labels, all_event_indices

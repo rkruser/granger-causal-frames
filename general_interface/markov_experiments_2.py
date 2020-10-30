@@ -32,7 +32,7 @@ def experiment1():
     
     # feature_renderer_2 makes the features correlate perfectly with the reward
     # The reward is not random, but based precisely on the last markov state
-    markov_process = MarkovProcess(renderer=feature_renderer_2)
+    markov_process = MarkovProcess(renderer=feature_renderer_1)
 
     dataset_options = Namespace(
                                 collate_fn = collatefunc_2,
@@ -69,6 +69,7 @@ def experiment1():
                     save_to = 'baseline_regressor.pth',
                     network_args={'network_type':'sequence_net'},
                     update_func = prob_update_markov_regressor,
+                    predict_func = predict_batch_sigmoid,
                     device='cpu'
                  )
                 ) # Need to add config options to each
@@ -86,10 +87,10 @@ def experiment1():
     Train model on dataset
     '''
     train_dataset.set_modes(Namespace(return_transitions=False))
-    train_model_on_dataset(baseline, train_dataset, n_epochs=1)
+    train_model_on_dataset(baseline, train_dataset, n_epochs=50)
 
     train_dataset.set_modes(Namespace(return_transitions=True))
-    train_model_on_dataset(model, train_dataset, n_epochs=1)
+    train_model_on_dataset(model, train_dataset, n_epochs=50)
 
 
     '''
@@ -102,8 +103,8 @@ def experiment1():
     predicted_baseline_values = baseline.predict(states).detach().cpu().numpy()
     predicted_model_values = model.predict(states).detach().cpu().numpy()
 
-    visualize_markov_sequence(states, values, predicted_baseline_values)
-    visualize_markov_sequence(states, values, predicted_model_values)
+    visualize_markov_sequence(states, values, predicted_baseline_values, title='baseline')
+    visualize_markov_sequence(states, values, predicted_model_values, title='model')
 
 
     '''
@@ -112,8 +113,16 @@ def experiment1():
     # Need a way of running a model on a dataset and getting each separate time series    
     # Then use functions from metrics_and_results
     
-    all_baseline_predictions, all_baseline_scores = predict_sequence_model_on_dataset(baseline, test_dataset)
-    all_model_predictions, all_model_scores = predict_sequence_model_on_dataset(model, test_dataset)
+    all_baseline_predictions, all_baseline_final_labels, all_baseline_event_indices = predict_sequence_model_on_dataset(baseline, test_dataset)
+    all_model_predictions, all_model_final_labels, all_model_event_indices = predict_sequence_model_on_dataset(model, test_dataset)
+
+
+#    all_baseline_results = sweep_decision_boundary(all_baseline_predictions, all_baseline_event_indices, all_baseline_final_labels)
+#    all_model_results = sweep_decision_boundary(all_model_predictions, all_model_event_indices, all_model_final_labels)
+    baseline_prefixes = ['baseline_'+str(i) for i in range(10)]
+    model_prefixes = ['model_'+str(i) for i in range(10)]
+    plot_all('results', baseline_prefixes, all_baseline_predictions[:10], all_baseline_final_labels[:10], all_baseline_event_indices[:10], index_time_conversion=1, step_size=1)
+    plot_all('results', model_prefixes, all_model_predictions[:10], all_model_final_labels[:10], all_model_event_indices[:10], index_time_conversion=1, step_size=1)
 
 
     '''
